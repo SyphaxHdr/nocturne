@@ -1,0 +1,70 @@
+{
+  "manifest_version": 2,
+  "name": "Nocturne",
+  "version": "0.6.0",
+  "description": "Un flux plein écran des vidéos de X : enchaînement auto, recherche par sujet, chaînes thématiques et filtres. Aucune donnée collectée ni envoyée.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "nocturne@local",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      },
+      "update_url": "https://raw.githubusercontent.com/SyphaxHdr/nocturne/main/updates.json"
+    }
+  },
+  "icons": {
+    "48": "icons/icon.svg",
+    "96": "icons/icon.svg"
+  },
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "background": {
+    "scripts": [
+      "background/background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
+        "shared/icons.js",
+        "shared/themes.js",
+        "shared/store.js",
+        "shared/rank.js",
+        "shared/channels.js",
+        "shared/observe.js",
+        "shared/panels.js",
+        "content/x.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    "shared/ui.css"
+  ],
+  "browser_action": {
+    "default_title": "Nocturne",
+    "default_icon": "icons/icon.svg",
+    "default_popup": "popup/popup.html"
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "commands": {
+    "toggle-nocturne": {
+      "suggested_key": {
+        "default": "Alt+Shift+N"
+      },
+      "description": "Ouvrir ou fermer Nocturne"
+    }
+  }
+}

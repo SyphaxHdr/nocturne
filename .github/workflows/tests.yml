@@ -1,0 +1,16 @@
+name: tests
+# À chaque envoi : tests unitaires (Node seul, aucune dépendance téléchargée, aucun secret utilisé).
+on:
+  push: { branches: [main] }
+  pull_request:
+permissions: { contents: read }
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node --test tests/core.test.js
+      - name: Syntaxe
+        run: for f in background/*.js content/*.js shared/*.js popup/*.js options/*.js ; do node --check "$f"; done

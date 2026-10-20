@@ -1,0 +1,10 @@
+node_modules/
+dist/
+web-ext-artifacts/
+*.xpi
+*.zip
+# Données d'analyse : restent sur ton ordinateur, jamais envoyées sur GitHub
+analyse/
+# Secrets éventuels
+.env
+*.pem

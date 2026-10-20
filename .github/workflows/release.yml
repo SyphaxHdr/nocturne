@@ -1,0 +1,55 @@
+name: release
+# Publier une version : pousser un tag vX.Y.Z identique à la version de manifest.json.
+# 1. tests  2. signature chez Mozilla (canal « unlisted », clés dans les secrets du dépôt)
+# 3. release GitHub avec le .xpi signé  4. mise à jour de updates.json : Firefox installe la nouvelle version tout seul.
+on:
+  push: { tags: ['v*'] }
+permissions: { contents: write }
+concurrency: { group: release, cancel-in-progress: false }
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Tests
+        run: node --test tests/core.test.js
+      - name: Version du tag = version du manifeste
+        id: v
+        run: |
+          V=$(node -p "require('./manifest.json').version")
+          [ "v$V" = "$GITHUB_REF_NAME" ] || { echo "Le tag $GITHUB_REF_NAME ne correspond pas à la version $V"; exit 1; }
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+      - name: Signature Mozilla (unlisted)
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          [ -n "$WEB_EXT_API_KEY" ] && [ -n "$WEB_EXT_API_SECRET" ] || { echo "Secrets AMO_JWT_ISSUER / AMO_JWT_SECRET absents"; exit 1; }
+          npx --yes web-ext@8.3.0 sign --source-dir . --artifacts-dir dist --channel unlisted --approval-timeout 1800000 \
+            --ignore-files "tests/**" "dist/**" ".github/**" "updates.json" "package.json" "README.md" ".gitignore" "LICENCE"
+          f=$(ls dist/*.xpi | head -1)
+          mv "$f" "dist/nocturne-${{ steps.v.outputs.version }}.xpi"
+      - name: Release GitHub
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: gh release create "$GITHUB_REF_NAME" "dist/nocturne-${{ steps.v.outputs.version }}.xpi" --title "Nocturne ${{ steps.v.outputs.version }}" --notes "Version signée par Mozilla. Installée automatiquement par Firefox si une version précédente est déjà là."
+      - name: Mise à jour de updates.json
+        run: |
+          V=${{ steps.v.outputs.version }}
+          H=$(sha256sum "dist/nocturne-$V.xpi" | cut -d' ' -f1)
+          git fetch origin main && git checkout main
+          node -e '
+            const fs = require("fs"); const [v, h] = process.argv.slice(1);
+            const f = "updates.json"; const j = JSON.parse(fs.readFileSync(f, "utf8"));
+            const a = j.addons["nocturne@local"];
+            a.updates = a.updates.filter((u) => u.version !== v);
+            a.updates.push({ version: v, update_link: "https://github.com/SyphaxHdr/nocturne/releases/download/v" + v + "/nocturne-" + v + ".xpi", update_hash: "sha256:" + h });
+            fs.writeFileSync(f, JSON.stringify(j, null, 2) + "\n");
+          ' "$V" "$H"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add updates.json
+          git commit -m "updates.json : version $V"
+          git push origin main
