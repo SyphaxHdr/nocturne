@@ -11,7 +11,6 @@
     regionKeepUnknown: false, // en mode « seulement », garder les vidéos sans lieu détecté
     blockAI: true, // masque les vidéos générées par IA (détection par libellés et mots-clés)
     noViolence: false, // écarte les vidéos classées « violence » (bagarres, armes, guerre…)
-    videoQuality: 'rapide', // rapide : X choisit la définition (démarrage rapide) ; nette : on lui demande une meilleure définition
     discover: 30, // % de vidéos choisies hors de tes préférences
     maxDuration: 120, // secondes, 0 = illimitée
     languages: ['fr', 'en'], // vide = toutes

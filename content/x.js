@@ -1,11 +1,12 @@
 /* Nocturne : lecteur plein écran pour les vidéos de X.
  *
  * Principe : Nocturne ne charge rien lui-même. Il LIT la page de X (les tweets qui contiennent une vidéo), laisse la vraie
- * vidéo de X jouer (c'est elle qui charge et fournit le son) et en recopie les images en plein écran.
+ * vidéo de X jouer (c'est elle qui charge et fournit le son) et l'affiche en grand : la balise <video> de X est prêtée à
+ * Nocturne le temps de la lecture, puis rendue à sa place (aucune copie d'image).
  * Pour obtenir d'autres vidéos il fait simplement défiler la page, comme tu le ferais. Il ne touche jamais à l'historique de X.
  * Le classement local (shared/rank.js) décide de l'ordre ; la timeline de X reste la seule source.
  *
- * Sobriété (0.5) : aucune boucle qui tourne pour rien. Le rendu suit les images de la vidéo (requestVideoFrameCallback),
+ * Sobriété (0.5) : aucune boucle qui tourne pour rien. Firefox affiche la vidéo lui-même (pas de canvas),
  * les filtres sont mis en cache, rien ne se redessine quand ce n'est pas visible, et la page de X est rechargée
  * proprement de temps en temps (entre deux vidéos) pour que sa mémoire ne gonfle pas pendant des heures.
  */
@@ -61,6 +62,7 @@
     off: [],
     loading: false,
     deadRun: 0,
+    stallRun: 0, // vidéos de suite qui n'ont pas démarré (lecteur vidéo de Firefox bloqué ?)
     dragging: false,
     soundLocked: false,
     keysOpen: false,
@@ -527,8 +529,7 @@
     S.off = [];
     if (S.orig) { try { S.orig.pause(); } catch (_) {} }
     S.orig = null;
-    stopRender();
-    restoreSize();
+    giveBack();
     els.fill.style.width = '0';
     els.thumb.style.left = '0';
     els.next.textContent = '';
@@ -536,80 +537,66 @@
     els.paused.classList.remove('show');
   }
 
-  // Affichage : on recopie chaque image de la vraie vidéo de X dans un canvas. Contrairement à captureStream, ça ne peut pas
-  // « perdre » l'image quand X change la source de sa vidéo (cas où on entendait le son sans voir l'image).
-  // Sobriété : on dessine une fois par image réellement décodée (requestVideoFrameCallback, ~30 fois/s) et jamais plus de
-  // pixels que ce que le cadre affiche. Rien n'est dessiné quand la vidéo est en pause ou l'onglet caché.
-  let stopRenderFn = null;
-  function stopRender() {
-    if (stopRenderFn) stopRenderFn();
-    stopRenderFn = null;
-    const c = els.video;
-    c.width = 16; c.height = 9; // vider le canvas : jamais l'image de la vidéo précédente
-  }
+  // Affichage (0.7.1) : Nocturne montre la VRAIE balise <video> de X, prêtée le temps de la lecture et rendue ensuite.
+  // Avant, chaque image était recopiée dans un canvas : sur certains PC (carte graphique Intel + NVIDIA, deux écrans),
+  // cette copie pouvait bloquer tout le décodage vidéo de Firefox, jusqu'aux vidéos YouTube des autres onglets.
+  // Ici, rien n'est copié ni redessiné : Firefox affiche la vidéo par son chemin normal, comme sur YouTube.
+  const VIDEO_CSS = ['position:absolute', 'inset:0', 'width:100%', 'height:100%', 'max-width:none', 'max-height:none', 'min-width:0', 'min-height:0',
+    'margin:0', 'padding:0', 'border:0', 'border-radius:0', 'object-fit:contain', 'object-position:center', 'transform:none', 'translate:none',
+    'scale:none', 'rotate:none', 'background:#000', 'display:block', 'visibility:visible', 'opacity:1', 'filter:none', 'clip-path:none',
+    'pointer-events:none', 'z-index:0'].map((d) => d + ' !important').join(';');
+  let lent = null; // { video, parent, next, style, slot, undo }
 
-  function startRender(video) {
-    stopRender();
-    const c = els.video;
-    const ctx = c.getContext('2d', { alpha: false });
-    let on = true, lastT = -1, shown = false, handle = 0, vw0 = 0, vh0 = 0, lastDraw = performance.now();
-    let vfc = typeof video.requestVideoFrameCallback === 'function';
-    const fit = () => {
-      const vw = video.videoWidth, vh = video.videoHeight;
-      const dpr = window.devicePixelRatio || 1;
-      const k = S.box && S.box[0] > 0 ? Math.min(1, (S.box[0] * dpr) / vw, (S.box[1] * dpr) / vh) : 1;
-      const w = Math.max(2, Math.round(vw * k)), h = Math.max(2, Math.round(vh * k));
-      if (Math.abs(c.width - w) > 1 || Math.abs(c.height - h) > 1) {
-        c.width = w; c.height = h; lastT = -1;
-        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-      }
-    };
-    const draw = () => {
-      if (!on) return;
-      if (video.readyState >= 2 && video.videoWidth && !document.hidden) {
-        if (video.videoWidth !== vw0 || video.videoHeight !== vh0) { vw0 = video.videoWidth; vh0 = video.videoHeight; setAr(vw0, vh0); }
-        fit();
-        const t = video.currentTime;
-        if (vfc || t !== lastT) {
-          lastT = t;
-          try { ctx.drawImage(video, 0, 0, c.width, c.height); lastDraw = performance.now(); if (!shown) { shown = true; clearBusy(); } } catch (_) {}
-        }
-      }
-      next();
-    };
-    const next = () => { if (on) handle = vfc ? video.requestVideoFrameCallback(draw) : requestAnimationFrame(draw); };
-    // Filet de sécurité : si le navigateur ne signale plus d'images alors que la vidéo avance, on repasse au rythme de l'écran.
-    const check = () => {
-      if (!on || !vfc || video.paused || document.hidden || video.readyState < 2) return;
-      if (performance.now() - lastDraw > 1000) { try { video.cancelVideoFrameCallback(handle); } catch (_) {} vfc = false; lastT = -1; next(); }
-    };
-    video.addEventListener('timeupdate', check);
-    stopRenderFn = () => {
-      on = false;
-      video.removeEventListener('timeupdate', check);
-      try { if (vfc) video.cancelVideoFrameCallback(handle); else cancelAnimationFrame(handle); } catch (_) {}
-    };
-    draw(); // première image tout de suite (même en pause), puis au rythme de la vidéo
-  }
-
-  // Netteté : X choisit la qualité de la vidéo selon la taille de son lecteur dans le fil. On agrandit donc (sans rien déplacer)
-  // la balise <video> de X, cachée derrière Nocturne, pour qu'il envoie une meilleure définition.
-  let restoreFn = null;
-  function restoreSize() { if (restoreFn) restoreFn(); restoreFn = null; }
-  function enlarge(video) {
-    restoreSize();
+  // Si X retire ou remplace sa vidéo pendant le prêt, on la lui rend juste avant (sinon son propre code planterait).
+  function guardParent(rec) {
     try {
-      if (SET().videoQuality !== 'nette') return; // par défaut X choisit la définition : démarrage plus rapide
-      if (getComputedStyle(video).position !== 'absolute') return; // seulement si ça ne peut pas décaler la page
-      const keys = ['width', 'height', 'max-width', 'max-height'];
-      const prev = keys.map((k) => [k, video.style.getPropertyValue(k), video.style.getPropertyPriority(k)]);
-      restoreFn = () => prev.forEach(([k, v, pr]) => (v ? video.style.setProperty(k, v, pr) : video.style.removeProperty(k)));
-      const w = 1280, h = Math.round(w / (S.ar || 16 / 9));
-      video.style.setProperty('width', w + 'px', 'important');
-      video.style.setProperty('height', h + 'px', 'important');
-      video.style.setProperty('max-width', 'none', 'important');
-      video.style.setProperty('max-height', 'none', 'important');
+      const page = rec.parent.wrappedJSObject;
+      if (!page || typeof exportFunction !== 'function') return;
+      const P = Node.prototype;
+      const pv = rec.video.wrappedJSObject;
+      const same = (x) => !!x && (x === rec.video || (pv && (x.wrappedJSObject || x) === pv));
+      const hook = (name, test) => {
+        page[name] = exportFunction(function (...args) {
+          if (lent === rec && test(args)) giveBack();
+          return P[name].apply(rec.parent, args);
+        }, window);
+        rec.undo.push(() => { delete page[name]; });
+      };
+      hook('removeChild', (a) => same(a[0]));
+      hook('insertBefore', (a) => same(a[1]));
+      hook('replaceChild', (a) => same(a[1]));
     } catch (_) {}
+  }
+
+  function borrow(video) {
+    giveBack();
+    const parent = video.parentNode;
+    if (!parent || !host) return false;
+    const rec = { video, parent, next: video.nextSibling, style: video.getAttribute('style'), slot: video.getAttribute('slot'), undo: [] };
+    lent = rec;
+    guardParent(rec);
+    try {
+      video.setAttribute('slot', 'nocturne-video');
+      video.setAttribute('style', VIDEO_CSS);
+      host.appendChild(video); // déplacé dans la même tâche : la lecture continue sans coupure
+      return true;
+    } catch (_) { giveBack(); return false; }
+  }
+
+  function giveBack() {
+    const rec = lent;
+    if (!rec) return;
+    lent = null;
+    rec.undo.forEach((f) => { try { f(); } catch (_) {} });
+    const v = rec.video;
+    try {
+      if (rec.style == null) v.removeAttribute('style'); else v.setAttribute('style', rec.style);
+      if (rec.slot == null) v.removeAttribute('slot'); else v.setAttribute('slot', rec.slot);
+      if (v.parentNode === host) { // X ne l'a pas reprise entre-temps : on la remet exactement à sa place
+        const ref = rec.next && rec.next.parentNode === rec.parent ? rec.next : null;
+        rec.parent.insertBefore(v, ref);
+      }
+    } catch (_) { try { if (v.parentNode === host) v.remove(); } catch (__) {} }
   }
 
   async function attach(video, item, token) {
@@ -619,8 +606,26 @@
     video.volume = st.volume;
     video.playbackRate = st.rate;
     try { video.currentTime = 0; } catch (_) {}
-    startRender(video); // l'image s'affiche dès qu'elle existe, en même temps que le son
-    await tryPlay(video);
+    borrow(video); // l'image s'affiche dès qu'elle existe, en même temps que le son
+    if (video.videoWidth) setAr(video.videoWidth, video.videoHeight);
+    S.userPaused = false;
+    // La surveillance démarre AVANT de lancer la lecture : si Firefox ne répond plus, play() ne se termine jamais.
+    let started = !video.paused && video.currentTime > 0;
+    listen(video, 'playing', () => { started = true; S.stallRun = 0; enforceAudio(); clearBusy(); });
+    listen(video, 'resize', () => setAr(video.videoWidth, video.videoHeight));
+    // Vidéo qui ne démarre pas au bout de 8 s, ou que Firefox n'arrive pas à décoder : on passe à la suivante.
+    // Trois de suite : ce n'est plus la vidéo, c'est le lecteur de Firefox qui est bloqué. On s'arrête et on le dit.
+    const stalled = (why) => {
+      if (token !== S.token || started || S.userPaused || S.page) return;
+      if (++S.stallRun >= 3) return mediaStuck();
+      toast(why);
+      dropCurrent();
+      goNext();
+    };
+    const slow = setTimeout(() => { if (video.currentTime === 0) stalled('Vidéo trop lente à charger, suivante.'); }, 8000);
+    S.off.push(() => clearTimeout(slow));
+    listen(video, 'error', () => stalled('Vidéo illisible, suivante.'));
+    await Promise.race([tryPlay(video), sleep(2500)]);
     if (token !== S.token) return;
     await waitMeta(video);
     if (token !== S.token) return;
@@ -635,21 +640,14 @@
     S.cycle = 0;
     S.pagePlays++;
     setAr(video.videoWidth, video.videoHeight);
-    enlarge(video);
     if (video.readyState >= 3 && !video.paused) clearState();
     refreshAudioUi();
     refreshLikeState();
     recordView(item);
     showStats(item, true);
 
-    S.userPaused = false;
     let prevT = 0, resumes = 0;
     listen(video, 'volumechange', () => { if (++S.enforceCount < 30) setTimeout(enforceAudio, 0); });
-    let started = !video.paused && video.currentTime > 0;
-    listen(video, 'playing', () => { started = true; enforceAudio(); clearBusy(); });
-    // Vidéo qui ne démarre pas au bout de 8 s : on n'attend pas, on passe à la suivante.
-    const slow = setTimeout(() => { if (token === S.token && !started && !S.userPaused && !S.page && video.currentTime === 0) { toast('Vidéo trop lente à charger, suivante.'); dropCurrent(); goNext(); } }, 8000);
-    S.off.push(() => clearTimeout(slow));
     listen(video, 'waiting', () => busy('Mise en mémoire…'));
     listen(video, 'play', () => { if (S.page) { try { video.pause(); } catch (_) {} } });
     const advance = () => {
@@ -701,12 +699,13 @@
     if (lag > 1200) { if (++S.lagHits >= 3) S.needClean = true; }
     else if (S.lagHits > 0 && lag < 200) S.lagHits = Math.max(0, S.lagHits - 0.25);
     if (!S.page) collect();
+    if (S.orig && !S.page && (!lent || lent.video !== S.orig)) { dropCurrent(); return goNext(); } // X a repris sa vidéo
     guard();
   }
   // Un panneau est ouvert : toute vidéo de X qui démarre derrière est remise en pause aussitôt (sans surveiller en boucle).
   function onPlayCapture(e) {
     const v = e.target;
-    if (S.open && S.page && v && v.tagName === 'VIDEO' && !(host && host.contains(v))) { try { v.pause(); } catch (_) {} }
+    if (S.open && S.page && v && v.tagName === 'VIDEO') { try { v.pause(); } catch (_) {} }
   }
   function startTimers() {
     stopTimers();
@@ -724,7 +723,7 @@
     if (!S.open) return;
     S.enforceCount = 0;
     if (S.page) { // un panneau est ouvert : aucune vidéo ne doit jouer derrière
-      $$('video').forEach((v) => { if (!v.paused && !v.closest('#nocturne-host')) { try { v.pause(); } catch (_) {} } });
+      $$('video').forEach((v) => { if (!v.paused) { try { v.pause(); } catch (_) {} } });
       return;
     }
     enforceAudio();
@@ -1139,6 +1138,17 @@
   function clearBusy() { if (els.state.classList.contains('busy')) clearState(); }
   function clearState() { els.state.className = 'n-state'; els.state.innerHTML = ''; }
 
+  // Le lecteur vidéo de Firefox ne répond plus (constaté sur certains PC à deux cartes graphiques) : plus aucune vidéo ne
+  // démarre, même sur YouTube. Nocturne s'arrête net au lieu d'enchaîner dans le vide, et explique quoi faire.
+  function mediaStuck() {
+    S.stallRun = 0;
+    S.token++;
+    stopRetry();
+    detach();
+    els.state.className = 'n-state card';
+    els.state.innerHTML = `<div class="n-big">${ic('ban', 28)}</div><p><b>Les vidéos ne démarrent plus.</b></p><p class="n-sub">Trois vidéos de suite n'ont pas pu se lancer. Si YouTube ne lit plus rien non plus, ce n'est pas ta connexion : c'est le lecteur vidéo de Firefox qui est bloqué. Ferme complètement Firefox puis rouvre-le.</p><div class="n-btns"><button class="n-btn primary" data-a="next">${ic('refresh', 16)}Réessayer</button></div>`;
+  }
+
   function showError(text) {
     els.state.className = 'n-state card';
     els.state.innerHTML = `<div class="n-big">${ic('ban', 28)}</div><p>${esc(text)}</p><div class="n-btns"><button class="n-btn primary" data-a="refresh">${ic('refresh', 16)}Réessayer</button></div>`;
@@ -1222,7 +1232,7 @@
           <aside class="n-rail l" data-el="railL"></aside>
           <main class="n-stage" data-el="stage">
             <div class="n-frame" data-a="pause" data-el="frame">
-              <canvas class="n-canvas" data-el="video" width="16" height="9"></canvas>
+              <slot name="nocturne-video"></slot>
               <div class="n-paused" data-el="paused">${ic('play', 56)}</div>
               <div class="n-pill left" data-el="pos"></div>
               <div class="n-pill right" data-el="next"></div>
@@ -1330,7 +1340,6 @@
       }, 250);
     });
     new ResizeObserver(fitFrame).observe(els.stage);
-    new ResizeObserver((e) => { const r = e[e.length - 1].contentRect; S.box = [r.width, r.height]; }).observe(els.frame);
     window.addEventListener('keydown', onKey, true);
 
     // volume

@@ -248,7 +248,6 @@
             ${row('Son au démarrage', sw('muted', !s.muted, 'Son au démarrage'))}
             ${rng('volume', 0, 100, Math.round(s.volume * 100), 'Volume')}
             <div class="n-field"><div class="n-flabel"><span>Vitesse</span></div>${seg('rate', s.rate, RATES.map((r) => [r, String(r).replace('.', ',') + '×']))}</div>
-            <div class="n-field"><div class="n-flabel"><span>Qualité vidéo</span></div>${seg('videoQuality', s.videoQuality, [['rapide', 'Rapide'], ['nette', 'Plus nette']])}<p class="n-hint">« Rapide » démarre vite (X choisit la définition). « Plus nette » demande une meilleure image, mais charge plus longtemps.</p></div>
             ${rng('maxDuration', 0, R().DURATIONS.length - 1, di, 'Durée maximale d\'une vidéo')}
           </section>
           <section class="n-card"><h3>2. Ce que tu vois</h3>
