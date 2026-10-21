@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Nocturne",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Un flux plein écran des vidéos de X : enchaînement auto, recherche par sujet, chaînes thématiques et filtres. Aucune donnée collectée ni envoyée.",
   "browser_specific_settings": {
     "gecko": {

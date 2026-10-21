@@ -38,17 +38,61 @@
     {
       id: 'devops', label: 'DevOps & tech', short: 'DevOps', icon: 'terminal', long: true,
       angles: [
-        { label: 'Explications', hint: 'Tutos et explications : Kubernetes, Docker, Terraform, CI/CD…', q: '(kubernetes OR k8s OR docker OR terraform OR ansible OR devops OR "ci/cd" OR linux OR "github actions" OR sre OR observability) (explained OR tutorial OR tuto OR "how to" OR "in 100 seconds" OR expliqué OR demo OR démo)' + V, f: 'top' },
+        { label: 'Explications', hint: 'Kubernetes, Docker, Terraform, CI/CD, Linux…', q: '(kubernetes OR k8s OR docker OR terraform OR ansible OR devops OR "ci/cd" OR linux OR "github actions" OR sre OR homelab)' + V, f: 'top' },
+        { label: 'Récents', hint: 'Les dernières vidéos DevOps et cloud', q: '(kubernetes OR docker OR terraform OR devops OR linux OR cloud OR aws OR azure OR homelab OR selfhosted)' + V + ' min_faves:5', f: 'live' },
         { label: 'Conférences', hint: 'Talks de KubeCon, FOSDEM, Devoxx…', q: '(kubecon OR fosdem OR devoxx OR "conference talk" OR keynote OR "re:invent" OR "devops days" OR "platform engineering")' + V, f: 'top' },
-        { label: 'Actus', hint: 'Nouveautés cloud, homelab, outils', q: '(devops OR kubernetes OR cloud OR aws OR azure OR gcp OR homelab OR selfhosted OR "open source")' + V + ' min_faves:50', f: 'live' },
       ],
     },
     {
       id: 'docs', label: 'Documentaires', short: 'Docs', icon: 'doc', long: true,
       angles: [
-        { label: 'Documentaires', hint: 'Reportages et docs, à la ARTE', q: '(documentaire OR documentary OR reportage OR "doc complet" OR "full documentary" OR arte)' + V + ' min_faves:100', f: 'top' },
-        { label: 'Vulgarisation', hint: 'Science, histoire, explications', q: '(vulgarisation OR science OR histoire OR history OR astronomie OR physique OR "le saviez-vous" OR explained OR expliqué)' + V + ' min_faves:500', f: 'top' },
-        { label: 'Récents', hint: 'Les derniers documentaires publiés', q: '(documentaire OR documentary OR reportage OR arte)' + V + ' min_faves:20', f: 'live' },
+        { label: 'Documentaires', hint: 'Reportages et docs, à la ARTE', q: '(documentaire OR documentary OR reportage OR "doc complet" OR "full documentary" OR arte)' + V + ' min_faves:20', f: 'top' },
+        { label: 'Vulgarisation', hint: 'Science, histoire, explications', q: '(vulgarisation OR histoire OR history OR "le saviez-vous" OR explained OR expliqué OR "did you know")' + V + ' min_faves:200', f: 'top' },
+        { label: 'Récents', hint: 'Les derniers documentaires publiés', q: '(documentaire OR documentary OR reportage OR arte)' + V, f: 'live' },
+      ],
+    },
+    {
+      id: 'science', label: 'Science & espace', short: 'Science', icon: 'spark',
+      angles: [
+        { label: 'Espace', hint: 'Fusées, télescopes, astronomie', q: '(nasa OR spacex OR esa OR fusée OR rocket OR telescope OR astronomie OR astronomy OR "james webb")' + V + ' min_faves:100', f: 'top' },
+        { label: 'Expériences', hint: 'Physique, chimie, expériences étonnantes', q: '(science OR physique OR physics OR chimie OR chemistry OR experiment OR expérience)' + V + ' min_faves:300', f: 'top' },
+        { label: 'Récents', hint: 'Les dernières vidéos de science', q: '(science OR nasa OR spacex OR astronomie OR physique)' + V + ' min_faves:10', f: 'live' },
+      ],
+    },
+    {
+      id: 'sport', label: 'Sport', short: 'Sport', icon: 'play',
+      angles: [
+        { label: 'Actions', hint: 'Les plus belles actions', q: '(goal OR but OR highlights OR "what a" OR incroyable OR skills)' + V + ' min_faves:2000', f: 'top' },
+        { label: 'Foot', hint: 'Football', q: '(football OR foot OR ligue1 OR "champions league" OR "ligue des champions")' + V + ' min_faves:500', f: 'top' },
+        { label: 'Récents', hint: 'Les derniers moments sportifs', q: '(sport OR football OR nba OR tennis OR f1 OR rugby)' + V + ' min_faves:50', f: 'live' },
+      ],
+    },
+    {
+      id: 'humour', label: 'Humour', short: 'Humour', icon: 'like',
+      angles: [
+        { label: 'Populaires', hint: 'Ce qui fait rire en ce moment', q: '(mdr OR ptdr OR lol OR humour OR sketch OR funny OR "😂")' + V + ' min_faves:1000', f: 'top' },
+        { label: 'Récents', hint: 'Les dernières vidéos drôles', q: '(mdr OR ptdr OR humour OR sketch OR funny)' + V + ' min_faves:50', f: 'live' },
+      ],
+    },
+    {
+      id: 'cuisine', label: 'Cuisine', short: 'Cuisine', icon: 'bulb',
+      angles: [
+        { label: 'Recettes', hint: 'Recettes en vidéo', q: '(recette OR recipe OR cuisine OR cooking OR "fait maison")' + V + ' min_faves:100', f: 'top' },
+        { label: 'Récents', hint: 'Les dernières recettes', q: '(recette OR recipe OR cuisine OR cooking)' + V + ' min_faves:5', f: 'live' },
+      ],
+    },
+    {
+      id: 'nature', label: 'Animaux & nature', short: 'Nature', icon: 'globe',
+      angles: [
+        { label: 'Animaux', hint: 'Animaux, nature sauvage', q: '(animaux OR animals OR wildlife OR chat OR cat OR chien OR dog OR nature)' + V + ' min_faves:1000', f: 'top' },
+        { label: 'Paysages', hint: 'Voyages et paysages', q: '(paysage OR landscape OR voyage OR travel OR montagne OR mountains OR océan OR ocean)' + V + ' min_faves:500', f: 'top' },
+      ],
+    },
+    {
+      id: 'art', label: 'Art & création', short: 'Art', icon: 'tag',
+      angles: [
+        { label: 'Processus', hint: 'Dessin, peinture, 3D, animation en train de se faire', q: '(drawing OR dessin OR painting OR peinture OR blender OR "3d art" OR animation OR timelapse OR "speed paint" OR pixelart)' + V + ' min_faves:200', f: 'top' },
+        { label: 'Récents', hint: 'Les dernières créations', q: '(drawing OR dessin OR painting OR animation OR blender OR pixelart)' + V + ' min_faves:10', f: 'live' },
       ],
     },
   ];

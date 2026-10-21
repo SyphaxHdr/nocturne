@@ -32,6 +32,7 @@ Sur x.com : bouton **Nocturne** en bas de page, icône de la barre d'outils, ou 
 | Espace, M, + / − | pause, son, volume |
 | < > | vitesse |
 | L, O, R | aimer sur X, ouvrir le post, actualiser |
+| / | chercher |
 | P | reposter / retirer le repost (sur X) |
 | D | discussion : réponses et citations |
 | T | traduire le texte (traduction de X) |
@@ -44,20 +45,28 @@ Sur x.com : bouton **Nocturne** en bas de page, icône de la barre d'outils, ou 
 
 - **Lecture** : Nocturne lit les vidéos de la page de X et fait défiler la page pour en trouver d'autres. Il ne télécharge
   rien lui-même et ne modifie pas X.
-- **Chaînes** : Jeux vidéo, Films & séries, Musique, DevOps & tech, Documentaires, et tes chaînes perso (mots, hashtags,
-  comptes). Elles utilisent la recherche de X.
-- **Filtres** : vidéos IA, langues, zones, mots bloqués, comptes masqués (listes repliées derrière un œil), durée.
+- **Chaînes** : Jeux vidéo, Films & séries, Musique, DevOps & tech, Documentaires, Science, Sport, Humour, Cuisine,
+  Nature, Art, et tes chaînes perso (bouton **+ Créer** : mots, hashtags, comptes). Elles utilisent la recherche de X.
+  Chaque angle d'une chaîne reçoit une note automatique (part des vidéos qui ont marché).
+- **Chiffres sous la vidéo** : vues, j'aime, reposts, réponses tels que X les affiche, et un verdict automatique
+  (Discret, Moyen, Marche bien, Carton) calculé à partir des vues, de l'engagement et de la vitesse depuis la publication.
+- **Filtres** : vidéos IA, violence, langues, zone (une liste), mots bloqués, comptes masqués (listes repliées derrière un
+  œil), durée. « Ce que tu vois » : Mes goûts, Équilibré ou Découverte.
 - **Discussion** : sur demande, Nocturne ouvre quelques secondes la page du tweet dans une petite fenêtre, lit les réponses
   affichées et te les montre. Rien n'est enregistré.
 - **Diagnostic** : vérifie que Nocturne retrouve tout dans la page de X (utile quand X change son site).
 - **Sobriété** : rendu au rythme des images de la vidéo, rien ne tourne en pause, et la page de X est rechargée proprement
   après une longue session pour ne pas saturer la mémoire.
-- Boutons **Marquer** et **Analyse** : visibles seulement si un module complémentaire privé, installé à part, est présent.
+- **Démarrage rapide** : qualité « Rapide » par défaut (X choisit la définition) ; une vidéo qui ne démarre pas en 8 s
+  est passée.
+- **Écrans étroits** : la barre du haut et les colonnes se replient ; en plein écran, une barre « Quitter le plein écran »
+  apparaît au passage de la souris.
+- Carte **Analyse de ce fil** : visible seulement si un module complémentaire privé, installé à part, est présent.
 
 ## Publier une nouvelle version
 
 1. Monter la version dans `manifest.json` et `package.json`.
-2. `git tag v0.6.1 && git push --tags`.
+2. `git tag v0.7.0 && git push --tags`.
 3. L'Action *release* teste, fait signer par Mozilla (secrets du dépôt `AMO_JWT_ISSUER` et `AMO_JWT_SECRET`), publie le
    `.xpi` et met à jour `updates.json`.
 

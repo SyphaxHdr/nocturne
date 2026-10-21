@@ -58,6 +58,7 @@
       if (mode === 'only' && !reg && !(st.regionKeepUnknown && !(item.regions || []).length)) return 'region';
     }
     for (const w of st.blockWords || []) if (hasWord(item.norm, w)) return 'word';
+    if (st.noViolence && (item.themes || []).includes('violence')) return 'violence';
     for (const id of item.themes) {
       const t = st.targets && st.targets[id];
       if (typeof t === 'number' && t <= HARD_BLOCK) return 'theme';
@@ -84,6 +85,27 @@
     s += fb.handles[item.handle.toLowerCase()] || 0;
     for (const w of item.words) s += (fb.words[w] || 0) * 0.4;
     return s;
+  }
+
+  // Verdict automatique d'un tweet d'après ses chiffres (affiché sous la vidéo) : 0 discret, 1 moyen, 2 marche bien, 3 carton.
+  // Tient compte des vues, du taux d'interactions (j'aime + reposts + réponses ÷ vues) et de la vitesse (vues par heure).
+  const LEVELS = ['Discret', 'Moyen', 'Marche bien', 'Carton'];
+  function verdict(m, postedAt, now = Date.now()) {
+    if (!m) return null;
+    const v = m.views, l = m.likes || 0, r = m.reposts || 0, c = m.replies || 0;
+    const ageH = postedAt ? Math.max(1, (now - Date.parse(postedAt)) / 3600000) : null;
+    let pts;
+    if (v != null && v > 0) {
+      const eng = (l + r + c) / v;
+      pts = v >= 1e6 ? 4 : v >= 1e5 ? 3 : v >= 1e4 ? 2 : v >= 1e3 ? 1 : 0;
+      if (v >= 500) pts += eng >= 0.06 ? 2 : eng >= 0.03 ? 1 : 0;
+      if (ageH && v / ageH >= 1e4) pts += 1;
+      const level = pts >= 5 ? 3 : pts >= 3 ? 2 : pts >= 1 ? 1 : 0;
+      return { level, label: LEVELS[level], eng, ageH };
+    }
+    if (!l && !r) return null;
+    const level = l >= 1e4 ? 3 : l >= 1e3 ? 2 : l >= 100 ? 1 : 0;
+    return { level, label: LEVELS[level], eng: null, ageH };
   }
 
   // Choisit la prochaine vidéo parmi une fenêtre de candidates.
@@ -116,5 +138,5 @@
   const DURATIONS = [30, 60, 120, 180, 300, 600, 0];
   const durationLabel = (s) => (s === 0 ? 'Illimitée' : s < 60 ? s + ' s' : s / 60 + ' min');
 
-  NCT.rank = { isAI, inRegion, HARD_BLOCK, measured, reason, excluded, score, pick, buildSearchQuery, searchUrl, DURATIONS, durationLabel };
+  NCT.rank = { isAI, inRegion, HARD_BLOCK, measured, reason, excluded, score, pick, verdict, LEVELS, buildSearchQuery, searchUrl, DURATIONS, durationLabel };
 })();

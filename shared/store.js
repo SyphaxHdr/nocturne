@@ -10,6 +10,8 @@
     regionMode: 'prefer', // only | prefer | exclude
     regionKeepUnknown: false, // en mode « seulement », garder les vidéos sans lieu détecté
     blockAI: true, // masque les vidéos générées par IA (détection par libellés et mots-clés)
+    noViolence: false, // écarte les vidéos classées « violence » (bagarres, armes, guerre…)
+    videoQuality: 'rapide', // rapide : X choisit la définition (démarrage rapide) ; nette : on lui demande une meilleure définition
     discover: 30, // % de vidéos choisies hors de tes préférences
     maxDuration: 120, // secondes, 0 = illimitée
     languages: ['fr', 'en'], // vide = toutes
@@ -29,11 +31,11 @@
     customChannels: [], // chaînes perso : { id, label, terms, accounts, videoOnly, long }
   };
 
-  const KEYS = ['settings', 'profile', 'feedback', 'recent'];
+  const KEYS = ['settings', 'profile', 'feedback', 'recent', 'quality'];
   const fresh = (k) =>
-    k === 'settings' ? { ...DEFAULTS } : k === 'profile' ? { views: [] } : k === 'feedback' ? { handles: {}, words: {}, themes: {} } : k === 'recent' ? [] : null;
+    k === 'settings' ? { ...DEFAULTS } : k === 'profile' ? { views: [] } : k === 'feedback' ? { handles: {}, words: {}, themes: {} } : k === 'recent' ? [] : k === 'quality' ? {} : null;
 
-  const state = { settings: fresh('settings'), profile: fresh('profile'), feedback: fresh('feedback'), recent: [] };
+  const state = { settings: fresh('settings'), profile: fresh('profile'), feedback: fresh('feedback'), recent: [], quality: {} };
   const listeners = new Set();
   const timers = {};
   const emit = (what) => listeners.forEach((fn) => { try { fn(what, state); } catch (e) { console.error('[Nocturne]', e); } });
@@ -43,6 +45,7 @@
     if (k === 'profile') return { views: Array.isArray(v && v.views) ? v.views : [] };
     if (k === 'feedback') return { handles: {}, words: {}, themes: {}, ...(v || {}) };
     if (k === 'recent') return Array.isArray(v) ? v : [];
+    if (k === 'quality') return v && typeof v === 'object' ? v : {};
     return v || null;
   }
 
@@ -108,6 +111,13 @@
       for (const w of (item.words || []).slice(0, 6)) f.words[w] = clamp((f.words[w] || 0) + delta * 0.5);
       persist('feedback');
       emit('feedback');
+    },
+    // Qualité d'une chaîne / d'un angle : combien de vidéos vues, combien « marchent bien » (compteurs seulement).
+    addQuality(key, good) {
+      const q = state.quality[key] || { n: 0, good: 0 };
+      q.n++; if (good) q.good++;
+      state.quality[key] = q;
+      persist('quality', 2000);
     },
     addRecent(q) {
       const r = [q, ...state.recent.filter((x) => x !== q)].slice(0, 8);

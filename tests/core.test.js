@@ -169,3 +169,20 @@ test('chaînes perso : requêtes construites et protégées', () => {
   assert.equal(c.angles[2].q, 'from:dev_solo filter:native_video');
   assert.equal(C.toChannel({ id: 'x', label: 'vide', terms: [], accounts: [] }).angles.length, 0);
 });
+
+test('verdict automatique selon les chiffres', () => {
+  const now = Date.parse('2026-10-21T12:00:00Z');
+  const h = (n) => new Date(now - n * 3600000).toISOString();
+  assert.equal(R.verdict({ views: 2500000, likes: 90000, reposts: 8000, replies: 1200 }, h(10), now).level, 3);
+  assert.equal(R.verdict({ views: 40000, likes: 1500, reposts: 100, replies: 40 }, h(20), now).level, 2);
+  assert.equal(R.verdict({ views: 3000, likes: 40, reposts: 2, replies: 1 }, h(5), now).level, 1);
+  assert.equal(R.verdict({ views: 300, likes: 2, reposts: 0, replies: 0 }, h(5), now).level, 0);
+  assert.equal(R.verdict({ views: null, likes: 1500, reposts: 10, replies: 3 }, null, now).level, 2);
+  assert.equal(R.verdict(null), null);
+});
+
+test('filtre sans violence', () => {
+  const v = mk('Grosse bagarre dans la rue');
+  assert.equal(R.reason(v, st({ noViolence: true })), 'violence');
+  assert.equal(R.reason(v, st({ noViolence: false })), null);
+});

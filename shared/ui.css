@@ -421,7 +421,7 @@ button.n-chip:hover { background: var(--surface2); }
 .n-toast button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: #B8330F; font-weight: 700; padding: 0; text-decoration: underline; }
 
 /* Colonne d'actions : pictogramme + libellé, groupes séparés */
-.n-actions { display: flex; flex-direction: column; flex-wrap: wrap-reverse; align-content: center; justify-content: center; gap: 6px; max-height: 100%; }
+.n-actions { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: center; justify-content: center; gap: 6px; max-height: 100%; flex: none; }
 .n-act { width: 64px; height: 56px; border-radius: 2px; border: 1px solid var(--line2); background: var(--surface); color: var(--text); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 0; }
 .n-act span { font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); line-height: 1; }
 .n-act:hover { background: var(--surface2); border-color: var(--text2); }
@@ -474,21 +474,30 @@ button.n-chip:hover { background: var(--surface2); }
 
 /* ---------- Fenêtre étroite : mode compact ---------- */
 
-@media (max-width: 1280px) { .n-tbtn:not(.icon) span, .n-autobtn span { display: none; } .n-rail { width: 270px; } }
-@media (max-width: 1000px) { .n-rail { display: none; } .n-tabs button span { display: none; } .n-overlay.drawer .n-drawer { position: absolute; right: 0; top: 0; bottom: 0; z-index: 6; width: min(380px, 92vw); } }
+@media (max-width: 1280px) { .n-autobtn span { display: none; } .n-rail { width: 270px; } .n-brand { width: auto; } }
+@media (max-width: 1150px) { .n-tabs button span { display: none; } .n-tabs button.on span { display: inline; } }
+@media (max-width: 1000px) { .n-rail { display: none; } .n-overlay.drawer .n-drawer { position: absolute; right: 0; top: 0; bottom: 0; z-index: 6; width: min(380px, 92vw); } }
 @media (max-width: 900px) {
   .n-algo, .n-cols { flex-direction: column; }
   .n-radar-card, .n-side, .n-themes-card { width: 100%; flex: none; }
+  .n-brand b { display: none; }
+  .n-tabs button.on span { display: none; }
 }
+/* Écran peu haut : boutons plus petits, puis sans libellé */
+@media (max-height: 780px) { .n-act { height: 50px; } .n-act.strong { height: 54px; } .n-actions { gap: 5px; } }
+@media (max-height: 640px) { .n-act { width: 48px; height: 42px; } .n-act span { display: none; } .n-act.strong { height: 46px; } .n-sep { margin: 2px 0; } .n-info { padding-bottom: 62px; } }
 @media (max-width: 640px) {
-  .n-top { padding: 0 8px; height: 52px; }
+  .n-top { padding: 0 8px; height: 52px; gap: 6px; }
   .n-brand { width: auto; }
-  .n-brand b, .n-top .n-hide-compact { display: none; }
-  .n-tabs button { padding: 0 12px; }
+  .n-brand b, .n-top .n-hide-compact, .n-autobtn .n-switch-i { display: none; }
+  .n-tabs button { padding: 0 10px; }
+  .n-brand, .n-top [data-a="refresh"] { display: none; }
+  .n-topsearch { flex: 1 1 44px; min-width: 44px; padding: 0 10px; }
+  .n-topsearch input::placeholder { color: transparent; }
   .n-stage { flex-direction: column !important; padding: 8px; gap: 8px; }
   .n-frame { height: auto; flex: 1; min-height: 0; width: 100%; aspect-ratio: auto; }
-  .n-actions { flex-direction: row; flex-wrap: wrap; justify-content: center; max-height: none; gap: 6px; }
-  .n-act { width: 46px; height: 44px; }
+  .n-actions { flex-direction: row; flex-wrap: nowrap; justify-content: center; max-height: none; gap: 6px; width: 100%; }
+  .n-act { width: auto; flex: 1; max-width: 56px; height: 44px; }
   .n-act span { display: none; }
   .n-act.strong { height: 44px; }
   .n-sep { display: none; }
@@ -496,6 +505,44 @@ button.n-chip:hover { background: var(--surface2); }
   .n-trow { grid-template-columns: 80px 1fr 84px; }
   .n-trow .n-tbtns { display: none; }
 }
+
+/* Recherche unique dans la barre du haut */
+.n-topsearch { flex: 1 1 240px; max-width: 380px; min-width: 120px; align-self: center; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border: 1px solid var(--line2); border-radius: 2px; background: var(--bg); color: var(--muted); }
+.n-topsearch:focus-within { border-color: var(--text); }
+.n-topsearch.on { border-color: var(--accent); color: var(--accent-t); }
+.n-topsearch input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--text); font-size: 14px; }
+.n-topsearch input::placeholder { color: #77736a; }
+.n-top { gap: 12px; }
+.n-tabs, .n-top-right { flex: none; }
+.n-top-right { gap: 2px; }
+
+/* Chiffres et verdict sous le texte de la vidéo */
+.n-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-family: var(--mono); font-size: 12px; color: rgba(255,255,255,.85); }
+.n-stats:empty { display: none; }
+.n-stats span { display: inline-flex; align-items: center; gap: 5px; }
+.n-verdict { pointer-events: auto; padding: 2px 8px; border-radius: 2px; font-family: var(--sans); font-size: 11.5px; font-weight: 700; letter-spacing: .02em; border: 1px solid rgba(255,255,255,.35); color: #fff; background: rgba(0,0,0,.35); }
+.n-verdict.l0 { color: rgba(255,255,255,.7); }
+.n-verdict.l2 { background: var(--green); border-color: var(--green); color: #141a05; }
+.n-verdict.l3 { background: var(--accent); border-color: var(--accent); color: #140803; }
+
+/* Rail gauche simplifié */
+.n-tiles.two { grid-template-columns: repeat(2, 1fr); }
+.n-selrow { display: flex; gap: 6px; flex-wrap: wrap; }
+.n-select { flex: 1 1 120px; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 2px; background: var(--bg); color: var(--text); font-size: 13px; }
+.n-select:focus { border-color: var(--text); outline: 0; }
+.n-select option { background: var(--surface); color: var(--text); }
+
+/* Carte « Analyse de ce fil » (module Nocturne Analyse) */
+.n-anacard { padding: 14px; background: var(--surface); border: 1px solid var(--line); border-top: 2px solid var(--accent); display: flex; flex-direction: column; gap: 10px; }
+.n-tips.sm { font-size: 12.5px; gap: 6px; padding-left: 16px; }
+
+/* Sortie du plein écran */
+.n-fsbar { display: none; position: absolute; top: 14px; right: 14px; z-index: 7; gap: 8px; align-items: center; transition: opacity .2s; }
+.n-fsbar .n-btn { background: rgba(14,14,13,.8); }
+.n-fsbar .n-tbtn { background: rgba(14,14,13,.8); }
+.n-overlay.fs .n-fsbar { display: flex; }
+.n-overlay.fs.idle .n-fsbar { opacity: 0; pointer-events: none; }
+.n-overlay.fs.page .n-fsbar { display: none; }
 
 /* ---------- Finitions ---------- */
 
@@ -507,3 +554,14 @@ button.n-chip:hover { background: var(--surface2); }
 .n-chform { display: flex; flex-direction: column; gap: 8px; }
 .n-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text2); }
 .n-check input { accent-color: var(--accent); }
+
+/* Qualité d'un angle de chaîne */
+.n-qual { display: block; width: 100%; height: 3px; background: var(--line2); margin-top: 6px; }
+.n-qual i { display: block; height: 3px; background: var(--green); }
+
+.n-time { white-space: nowrap; }
+@media (max-width: 480px) {
+  .n-top .n-top-right > [data-a="fullscreen"] { display: none; }
+  .n-tabs button { padding: 0 8px; }
+  .n-autobtn { padding: 0 8px; }
+}

@@ -164,6 +164,7 @@
   }
   function publishState() {
     if (!host) return;
+    if (companion && S.open) loadSummary();
     const ch = chan();
     host.dataset.open = S.open ? '1' : '0';
     host.dataset.source = sourceTag();
@@ -190,10 +191,10 @@
     let a = findArticle(item);
     if (a || item.remote || !isFinite(item.y)) return a;
     const H = window.innerHeight;
-    for (const off of [0, -0.8, 0.8, -1.6, 1.6, -2.4]) {
+    for (const off of [0, -0.8, 0.8, -1.6, 1.6]) {
       window.scrollTo(0, Math.max(0, item.y - H / 2 + off * H));
-      for (let t = 0; t < 5; t++) {
-        await sleep(150);
+      for (let t = 0; t < 4; t++) {
+        await sleep(120);
         if (token !== S.token) return null;
         a = findArticle(item);
         if (a) return a;
@@ -251,10 +252,16 @@
     const near = p.filter((i) => mounted.has(i.id));
     return (near.length ? near : p).slice(0, n);
   }
+  // Pour la vidéo suivante : les plus proches de la position actuelle (X a souvent déjà commencé à les charger).
+  function nextCands() {
+    const c = windowCands(12);
+    const here = cur() && isFinite(cur().y) ? cur().y : window.scrollY + window.innerHeight / 2;
+    return c.map((it) => [it, isFinite(it.y) ? Math.abs(it.y - here) + (it.y < here ? 400 : 0) : 1e9]).sort((a, b) => a[1] - b[1]).slice(0, 5).map((x) => x[0]);
+  }
 
   // Bilan du filtrage : combien de vidéos X a fournies, combien sont écartées et pourquoi.
   function funnel() {
-    const c = { ai: 0, lang: 0, region: 0, word: 0, account: 0, theme: 0 };
+    const c = { ai: 0, violence: 0, lang: 0, region: 0, word: 0, account: 0, theme: 0 };
     for (const it of S.items) { const r = why(it); if (r) c[r]++; }
     return { total: S.items.length, c, left: pool().length, seen: S.played.size, cut: Object.values(c).reduce((a, b) => a + b, 0) };
   }
@@ -329,7 +336,7 @@
     busy('Chargement…');
     const want = S.hist.length ? 3 : 1;
     if (pool().length < want) { await fill(want); if (token !== S.token) return; }
-    const item = R.pick(windowCands(12), rankCtx());
+    const item = R.pick(nextCands(), rankCtx());
     if (!item) return noMore();
     S.hist.push(item);
     S.pos = S.hist.length - 1;
@@ -477,7 +484,6 @@
       if (elsewhere && !S.returnTo) return openStatus(item);
       item.dead = true;
       dropCurrent();
-      if (replay) toast('Cette vidéo n\'est plus disponible sur la page.');
       if (++S.deadRun > 10) { S.deadRun = 0; return noMore(); }
       return goNext();
     }
@@ -593,6 +599,7 @@
   function enlarge(video) {
     restoreSize();
     try {
+      if (SET().videoQuality !== 'nette') return; // par défaut X choisit la définition : démarrage plus rapide
       if (getComputedStyle(video).position !== 'absolute') return; // seulement si ça ne peut pas décaler la page
       const keys = ['width', 'height', 'max-width', 'max-height'];
       const prev = keys.map((k) => [k, video.style.getPropertyValue(k), video.style.getPropertyPriority(k)]);
@@ -633,11 +640,16 @@
     refreshAudioUi();
     refreshLikeState();
     recordView(item);
+    showStats(item, true);
 
     S.userPaused = false;
     let prevT = 0, resumes = 0;
     listen(video, 'volumechange', () => { if (++S.enforceCount < 30) setTimeout(enforceAudio, 0); });
-    listen(video, 'playing', () => { enforceAudio(); clearBusy(); });
+    let started = !video.paused && video.currentTime > 0;
+    listen(video, 'playing', () => { started = true; enforceAudio(); clearBusy(); });
+    // Vidéo qui ne démarre pas au bout de 8 s : on n'attend pas, on passe à la suivante.
+    const slow = setTimeout(() => { if (token === S.token && !started && !S.userPaused && !S.page && video.currentTime === 0) { toast('Vidéo trop lente à charger, suivante.'); dropCurrent(); goNext(); } }, 8000);
+    S.off.push(() => clearTimeout(slow));
     listen(video, 'waiting', () => busy('Mise en mémoire…'));
     listen(video, 'play', () => { if (S.page) { try { video.pause(); } catch (_) {} } });
     const advance = () => {
@@ -648,6 +660,7 @@
     listen(video, 'ended', advance);
     listen(video, 'timeupdate', () => {
       updateProgress();
+      if (Date.now() - statsAt > 20000) showStats(item, false); // les chiffres bougent : on les relit de temps en temps
       const dd = video.duration, c = video.currentTime;
       const looped = isFinite(dd) && dd > 0 && prevT > dd * 0.8 && c < prevT - dd * 0.5; // X relance parfois la vidéo en boucle
       prevT = c;
@@ -717,6 +730,24 @@
     enforceAudio();
     const v = S.orig;
     if (v && !S.userPaused && v.paused && !v.ended && v.readyState >= 2) v.play().catch(() => {});
+  }
+
+  // Chiffres du tweet (lus sur la page de X) et verdict automatique, sous la vidéo. Rien n'est enregistré, sauf un compteur
+  // par chaîne (combien de vidéos vues, combien marchent bien) pour noter les chaînes.
+  let statsAt = 0;
+  function showStats(item, first) {
+    const a = findArticle(item);
+    if (!a) { if (first) els.stats.innerHTML = ''; return; }
+    statsAt = Date.now();
+    const g = $('[role="group"][aria-label]', a);
+    const m = g ? O.parseMetrics(g.getAttribute('aria-label')) : null;
+    const t = $('time[datetime]', a);
+    const v = R.verdict(m, t && t.getAttribute('datetime'));
+    if (!m || (m.views == null && m.likes == null)) { els.stats.innerHTML = ''; return; }
+    const n = (x) => (x == null ? '–' : x >= 1e6 ? (x / 1e6).toFixed(1).replace('.0', '').replace('.', ',') + ' M' : x >= 1e4 ? Math.round(x / 1e3) + ' k' : x >= 1e3 ? (x / 1e3).toFixed(1).replace('.0', '').replace('.', ',') + ' k' : String(x));
+    const tip = v ? (m.views != null ? n(m.views) + ' vues' : '') + (v.ageH ? ' en ' + (v.ageH < 48 ? Math.round(v.ageH) + ' h' : Math.round(v.ageH / 24) + ' j') : '') + (v.eng != null ? ' · ' + (v.eng * 100).toFixed(1).replace('.', ',') + ' % d\'interactions' : '') : '';
+    els.stats.innerHTML = `${m.views != null ? `<span>${ic('eye', 13)}${n(m.views)}</span>` : ''}<span>${ic('like', 13)}${n(m.likes)}</span><span>${ic('repost', 13)}${n(m.reposts)}</span><span>${ic('bubble', 13)}${n(m.replies)}</span>${v ? `<b class="n-verdict l${v.level}" title="${esc(tip)}">${esc(v.label)}</b>` : ''}`;
+    if (first && v) { const k = sourceTag().replace(/:[a-z]+$/, ''); store.addQuality(k, v.level >= 2); }
   }
 
   function recordView(item) {
@@ -877,8 +908,9 @@
     thread: () => toggleDrawer(),
     drawerclose: () => closeDrawer(),
     translate: () => translate(),
-    mark: () => mark(),
     analyse: () => NCT.send({ type: 'nct-companion', cmd: 'open' }).catch(() => {}),
+    mix(t) { store.set({ discover: Number(t.dataset.v) }); },
+    focussearch() { els.qinput.focus(); },
     fullscreen: () => toggleFullscreen(),
     region(t) { const s = SET(); const v = t.dataset.v; store.set({ regions: s.regions.includes(v) ? s.regions.filter((x) => x !== v) : [...s.regions, v] }); },
     regionMode(t) { store.set({ regionMode: t.dataset.v }); },
@@ -896,6 +928,7 @@
     relax(t) {
       const k = t.dataset.v;
       if (k === 'ai') store.set({ blockAI: false });
+      else if (k === 'violence') store.set({ noViolence: false });
       else if (k === 'lang') store.set({ languages: [] });
       else if (k === 'region') store.set({ regions: [] });
       else if (k === 'theme') return openPage('algo');
@@ -1007,22 +1040,23 @@
     toast('La traduction de X n\'est pas arrivée.');
   }
 
-  // Module complémentaire facultatif (« Nocturne Analyse », installé à part) : Nocturne lui signale juste le tweet affiché.
-  let companion = false;
+  // Module complémentaire facultatif (« Nocturne Analyse », installé à part) : s'il est là, son analyse du fil en cours
+  // s'affiche dans la colonne de droite. Nocturne ne fait que lui demander le résumé.
+  let companion = false, summary = null, summaryKey = '', summaryAt = 0;
   async function checkCompanion() {
     const r = await NCT.send({ type: 'nct-companion', cmd: 'ping' }).catch(() => null);
     companion = !!(r && r.ok);
-    els.analysebtn.hidden = els.markbtn.hidden = !companion;
+    if (companion) loadSummary();
     return companion;
   }
-  async function mark() {
-    const it = cur();
-    if (!it) return;
-    if (!companion && !(await checkCompanion())) return toast('Le module Nocturne Analyse n\'est pas installé.');
-    toast('Marqué. Lecture du compte @' + it.handle + '…');
-    const r = await NCT.send({ type: 'nct-companion', cmd: 'mark', id: it.id, handle: it.handle, source: sourceTag() }).catch((e) => ({ ok: false, error: e.message }));
-    if (r && r.ok && r.data) toast('Fiche de @' + it.handle + ' : ' + r.data.tweets + ' tweets lus, ' + (r.data.medianLikes == null ? '?' : r.data.medianLikes) + ' j\'aime en médiane, ' + r.data.overPerformers + ' au-dessus du lot.');
-    else toast('Marqué. Fiche du compte impossible : ' + ((r && r.error) || 'pas de réponse') + '.');
+  async function loadSummary(force) {
+    if (!companion) return;
+    const key = sourceTag().split('/')[0].replace(/:[a-z]+$/, '');
+    if (!force && key === summaryKey && Date.now() - summaryAt < 10 * 60000) return;
+    summaryKey = key; summaryAt = Date.now();
+    const r = await NCT.send({ type: 'nct-companion', cmd: 'summary', source: key }).catch(() => null);
+    summary = r && r.ok ? r.data : { error: (r && r.error) || 'pas de réponse' };
+    scheduleRails();
   }
 
   // Diagnostic : Nocturne retrouve-t-il encore ce dont il a besoin dans la page de X ?
@@ -1096,6 +1130,7 @@
 
   let busyTimer = null;
   function busy(text) {
+    if (els.state.classList.contains('busy')) { const sp = els.state.querySelector('span'); if (sp) { sp.textContent = text; return; } }
     els.state.className = 'n-state busy';
     els.state.innerHTML = `<div class="n-busy"><i></i><span>${esc(text)}</span></div>`;
     clearTimeout(busyTimer);
@@ -1126,7 +1161,7 @@
       fixes.push(['search', 'search', 'Autre recherche'], ['refresh', 'refresh', 'Actualiser']);
     } else if (f.left === 0 && f.cut) {
       title = f.cut + ' vidéo' + (f.cut > 1 ? 's' : '') + ' sur ' + f.total + ' écartée' + (f.cut > 1 ? 's' : '') + ' par tes filtres.';
-      const labels = { ai: ['spark', 'Afficher les vidéos IA'], lang: ['lang', 'Toutes les langues'], region: ['globe', 'Retirer la zone'], word: ['tag', 'Voir les mots bloqués'], account: ['eyeoff', 'Voir les comptes masqués'], theme: ['algo', 'Voir les thèmes'] };
+      const labels = { violence: ['ban', 'Montrer la violence'], ai: ['spark', 'Afficher les vidéos IA'], lang: ['lang', 'Toutes les langues'], region: ['globe', 'Retirer la zone'], word: ['tag', 'Voir les mots bloqués'], account: ['eyeoff', 'Voir les comptes masqués'], theme: ['algo', 'Voir les thèmes'] };
       Object.entries(f.c).filter(([, n]) => n).sort((a, b) => b[1] - a[1]).slice(0, 3).forEach(([k]) => fixes.push(['relax', labels[k][0], labels[k][1], k]));
       fixes.push(['refresh', 'refresh', 'Actualiser']);
     } else {
@@ -1137,7 +1172,7 @@
     const note = delay > 0 ? `Nocturne actualise tout seul dans ${delay} secondes.`
       : delay === -1 ? 'Plusieurs essais sans rien de neuf : Nocturne ne recharge plus X tout seul, pour ne pas charger Firefox pour rien. Appuie sur Actualiser quand tu veux.' : '';
     els.state.className = 'n-state card';
-    els.state.innerHTML = `<p class="n-etitle">${esc(title)}</p>${f.total ? funnelHTML(f, false) : ''}${note ? `<p class="n-sub">${esc(note)}</p>` : ''}${forced ? '' : `<div class="n-btns">${fixes.map(([a, i, l, v], n) => `<button class="n-btn ${n === 0 ? 'primary' : ''}" data-a="${a === 'search' ? 'page' : a}" ${a === 'search' ? 'data-v="search"' : v ? `data-v="${esc(v)}"` : ''}>${ic(i, 16)}${esc(l)}</button>`).join('')}</div>`}`;
+    els.state.innerHTML = `<p class="n-etitle">${esc(title)}</p>${f.total ? funnelHTML(f, false) : ''}${note ? `<p class="n-sub">${esc(note)}</p>` : ''}${forced ? '' : `<div class="n-btns">${fixes.map(([a, i, l, v], n) => `<button class="n-btn ${n === 0 ? 'primary' : ''}" data-a="${a === 'search' ? 'focussearch' : a}" ${v ? `data-v="${esc(v)}"` : ''}>${ic(i, 16)}${esc(l)}</button>`).join('')}</div>`}`;
     renderTop();
   }
 
@@ -1171,15 +1206,13 @@
             <button data-a="src" data-v="foryou">${ic('home', 18)}<span>Pour vous</span></button>
             <button data-a="src" data-v="following">${ic('users', 18)}<span>Abonnements</span></button>
             <button data-a="src" data-v="channels">${ic('channels', 18)}<span data-el="clabel">Chaînes</span></button>
-            <button data-a="src" data-v="search">${ic('search', 18)}<span data-el="qlabel">Recherche</span></button>
           </nav>
+          <form class="n-topsearch" data-s="topSearch" data-el="topsearch" role="search">${ic('search', 17)}<input name="w" data-el="qinput" list="nct-recent" placeholder="Rechercher sur X" aria-label="Rechercher sur X" autocomplete="off"><datalist id="nct-recent" data-el="recent"></datalist></form>
           <div class="n-top-right">
             <button class="n-autobtn" data-a="auto" data-el="autosw" role="switch" aria-label="Enchaînement automatique" data-tip="Enchaîner automatiquement les vidéos">${ic('autoplay', 18)}<span>Auto</span><i class="n-switch-i"></i></button>
-            <span class="n-vsep n-hide-compact"></span>
-            <button class="n-tbtn n-hide-compact" data-a="page" data-v="algo" data-tip="Tableau de bord de l'algo">${ic('algo', 20)}<span>Algo</span></button>
-            <button class="n-tbtn n-hide-compact" data-a="analyse" data-el="analysebtn" data-tip="Conseils (module Nocturne Analyse)" hidden>${ic('bulb', 20)}<span>Analyse</span></button>
-            <button class="n-tbtn n-hide-compact" data-a="page" data-v="settings" data-tip="Réglages">${ic('settings', 20)}<span>Réglages</span></button>
-            <span class="n-vsep n-hide-compact"></span>
+            <button class="n-tbtn icon" data-a="refresh" data-tip="Actualiser le flux (R)" aria-label="Actualiser le flux">${ic('refresh', 19)}</button>
+            <button class="n-tbtn icon n-hide-compact" data-a="page" data-v="algo" data-tip="Ce que tu regardes (algo)" aria-label="Algo">${ic('algo', 20)}</button>
+            <button class="n-tbtn icon" data-a="page" data-v="settings" data-tip="Réglages" aria-label="Réglages">${ic('settings', 20)}</button>
             <button class="n-tbtn icon n-hide-compact" data-a="compact" data-tip="Fenêtre compacte" aria-label="Fenêtre compacte">${ic('window', 20)}</button>
             <button class="n-tbtn icon" data-a="fullscreen" data-tip="Plein écran (F)" aria-label="Plein écran">${ic('expand', 20)}</button>
             <button class="n-tbtn icon close" data-a="close" data-tip="Fermer (Échap)" aria-label="Fermer">${ic('close', 20)}</button>
@@ -1194,7 +1227,7 @@
               <div class="n-pill left" data-el="pos"></div>
               <div class="n-pill right" data-el="next"></div>
               <div class="n-state" data-el="state"></div>
-              <div class="n-info"><div class="n-handle" data-el="handle"></div><div class="n-text" data-el="text"></div><div class="n-irow"><div class="n-tags" data-el="tags"></div><button class="n-tr" data-a="translate" aria-label="Traduire le texte (T)">${ic('lang', 14)}Traduire</button></div></div>
+              <div class="n-info"><div class="n-handle" data-el="handle"></div><div class="n-text" data-el="text"></div><div class="n-stats" data-el="stats"></div><div class="n-irow"><div class="n-tags" data-el="tags"></div><button class="n-tr" data-a="translate" aria-label="Traduire le texte (T)">${ic('lang', 14)}Traduire</button></div></div>
               <div class="n-controls" data-el="controls">
                 <div class="n-seek" data-el="seek" role="slider" aria-label="Position dans la vidéo" tabindex="-1"><i class="n-seek-fill" data-el="fill"></i><i class="n-seek-thumb" data-el="thumb"></i><span class="n-seek-tip" data-el="tip"></span></div>
                 <div class="n-crow">
@@ -1209,18 +1242,14 @@
               </div>
             </div>
             <div class="n-actions" data-el="actions">
-              ${act('profile', 'plus', 'Profil', 'Voir le profil', 'follow')}
               ${act('like', 'like', 'J\'aime', 'J\'aime sur X (L)', '', 'like')}
               ${act('repost', 'repost', 'Reposter', 'Reposter / retirer le repost (P)', '', 'repost')}
-              ${act('thread', 'bubble', 'Discu.', 'Discussion : réponses et citations (D)')}
-              ${act('open', 'open', 'Ouvrir', 'Ouvrir le post sur X (O)')}
-              ${act('mark', 'flag', 'Marquer', 'Marquer (module Nocturne Analyse) (A)', '', 'markbtn')}
-              <div class="n-sep"></div>
+              ${act('thread', 'bubble', 'Discu.', 'Discussion : réponses, citations, lien vers X (D)')}
+              ${act('profile', 'user', 'Profil', 'Voir le profil sur X')}
               ${act('hide', 'userx', 'Masquer', 'Ne plus voir ce compte (H)', 'danger')}
               <div class="n-sep"></div>
               ${act('prev', 'up', 'Préc.', 'Vidéo précédente (K)')}
               ${act('next', 'down', 'Suiv.', 'Vidéo suivante (J)', 'strong')}
-              ${act('refresh', 'refresh', 'Actu.', 'Actualiser le flux (R)')}
             </div>
           </main>
           <aside class="n-rail r" data-el="railR"></aside>
@@ -1230,6 +1259,7 @@
           <header class="n-page-top"><button class="n-btn" data-a="back">${ic('back', 16)}Retour au flux</button><h2 data-el="pagetitle"></h2></header>
           <div class="n-page-body" data-el="pagebody"></div>
         </section>
+        <div class="n-fsbar"><button class="n-btn" data-a="fullscreen">${ic('shrink', 16)}Quitter le plein écran</button><button class="n-tbtn icon close" data-a="close" aria-label="Fermer Nocturne">${ic('close', 20)}</button></div>
         <div class="n-toast" data-el="toast" role="status"></div>
       </div>`;
     const link = $('link', shadow);
@@ -1245,7 +1275,6 @@
     setTimeout(reveal, 1500);
     $$('[data-el]', shadow).forEach((el) => (els[el.dataset.el] = el));
     els.overlay = $('.n-overlay', shadow);
-    els.markbtn.hidden = true; // visible seulement si le module Nocturne Analyse est installé
     // À document_start la racine peut ne pas exister encore : on attend qu'elle apparaisse.
     // un écran laissé par une ancienne version (mise à jour pendant que la page était ouverte) est retiré
     const install = () => {
@@ -1271,17 +1300,19 @@
     ['keydown', 'keyup', 'keypress'].forEach((t) => shadow.addEventListener(t, (e) => e.stopPropagation(), false));
     shadow.addEventListener('submit', (e) => {
       const f = e.target.closest ? e.target.closest('[data-s]') : null;
-      if (!f || !String(f.dataset.s).startsWith('rail')) return; // les formulaires des panneaux sont gérés par panels.js
+      if (!f || !/^(rail|top)/.test(String(f.dataset.s))) return; // les formulaires des panneaux sont gérés par panels.js
       e.preventDefault();
       const v = (f.elements.w.value || '').trim();
-      f.reset();
-      if (f.dataset.s === 'railSearch' && v) launchSearch([v]);
+      if (f.dataset.s !== 'topSearch') f.reset();
+      if (f.dataset.s === 'topSearch' && v) { f.elements.w.blur(); launchSearch([v]); }
       if (f.dataset.s === 'railBlock' && v) store.set({ blockWords: [...new Set([...SET().blockWords, v.toLowerCase()])] });
     });
-    // curseur « goûts / découverte » du rail gauche
-    shadow.addEventListener('input', (e) => {
-      const r = e.target.closest && e.target.closest('[data-r="discover"]');
-      if (r) { const v = Number(r.value); r.style.setProperty('--p', v + '%'); store.set({ discover: v }); }
+    // listes déroulantes du rail (zone)
+    shadow.addEventListener('change', (e) => {
+      const t = e.target;
+      if (!t || !t.dataset || !t.dataset.rc) return;
+      if (t.dataset.rc === 'zone') store.set({ regions: t.value ? [t.value] : [] });
+      if (t.dataset.rc === 'zmode') store.set({ regionMode: t.value });
     });
     els.overlay.addEventListener('wheel', onWheel, { passive: false });
     els.overlay.addEventListener('mousemove', wakeControls);
@@ -1339,6 +1370,7 @@
   }
 
   function fillInfo(item) {
+    els.stats.innerHTML = '';
     if (S.drawer && S.drawer !== item.id) closeDrawer();
     els.handle.textContent = item.name + '  @' + item.handle;
     els.text.textContent = item.text;
@@ -1415,7 +1447,11 @@
     publishState();
     const tab = S.source === 'channel' ? 'channels' : S.source;
     $$('[data-a="src"]', els.sources).forEach((b) => b.classList.toggle('on', b.dataset.v === tab));
-    els.qlabel.textContent = S.source === 'search' && S.query ? S.query.replace(/ filter:.*$/, '').slice(0, 22) : 'Recherche';
+    const q = S.source === 'search' && S.query ? S.query.replace(/ filter:.*$/, '') : '';
+    if (shadow.activeElement !== els.qinput) els.qinput.value = q;
+    els.topsearch.classList.toggle('on', !!q);
+    const rec = store.state.recent.slice(0, 8).map((x) => `<option value="${esc(x)}"></option>`).join('');
+    if (els.recent.__h !== rec) { els.recent.innerHTML = rec; els.recent.__h = rec; }
     const ch = chan();
     els.clabel.textContent = ch ? ch.label : 'Chaînes';
     els.autosw.classList.toggle('on', SET().auto);
@@ -1441,12 +1477,10 @@
     }, 600);
   }
 
-  const ZONE_CODE = { france: 'FR', europe: 'EU', usa: 'US', uk: 'UK', maghreb: 'MAG', afrique: 'AF', orient: 'MO', asie: 'AS', latam: 'LAT' };
-  const ZONE_NAME = { uk: 'R.-Uni', orient: 'Moy.-Orient', latam: 'Am. latine', usa: 'États-Unis' };
   const langLabel = (l) => (l.length ? l.map((x) => x.toUpperCase()).join(' · ') : 'Toutes');
 
   function funnelHTML(f, links = true) {
-    const rows = [['ai', 'spark', 'IA'], ['lang', 'lang', 'Langue'], ['region', 'globe', 'Zone'], ['word', 'tag', 'Mots'], ['account', 'eyeoff', 'Comptes'], ['theme', 'algo', 'Thèmes']].filter(([k]) => f.c[k]);
+    const rows = [['ai', 'spark', 'IA'], ['violence', 'ban', 'Violence'], ['lang', 'lang', 'Langue'], ['region', 'globe', 'Zone'], ['word', 'tag', 'Mots'], ['account', 'eyeoff', 'Comptes'], ['theme', 'algo', 'Thèmes']].filter(([k]) => f.c[k]);
     const max = Math.max(1, f.total);
     const bar = (n, cls) => `<i class="n-fbar ${cls}"><u style="width:${Math.max(n ? 4 : 0, Math.round((n / max) * 100))}%"></u></i>`;
     return `<div class="n-funnel">
@@ -1477,38 +1511,37 @@
   }
 
   function renderLeft(s, force) {
-    const tile = (a, v, icon, label, value, on) => `<button class="n-tile ${on ? 'on' : ''}" data-a="${a}" ${v ? `data-v="${v}"` : ''}>${ic(icon, 20)}<span class="n-tl">${esc(label)}</span><b>${esc(value)}</b></button>`;
-    const topics = s.topics.length
-      ? s.topics.map((t) => `<span class="n-chip accent"><button class="n-link" data-a="topic" data-v="${esc(t)}">${esc(t)}</button><button class="n-x" data-a="rmTopic" data-v="${esc(t)}" aria-label="Retirer ${esc(t)}">×</button></span>`).join('')
-      : '';
+    const tile = (a, v, icon, label, value, on) => `<button class="n-tile ${on ? 'on' : ''}" data-a="${a}" ${v ? `data-v="${v}"` : ''}>${ic(icon, 18)}<span class="n-tl">${esc(label)}</span><b>${esc(value)}</b></button>`;
     const ch = chan();
     const channels = `<section class="n-block"><div class="n-label">${ic('channels', 13)}Chaînes</div>
-        <div class="n-chans">${C.all().map((c) => `<button class="n-chan ${ch && ch.id === c.id ? 'on' : ''}" data-a="channel" data-v="${c.id}" aria-pressed="${!!(ch && ch.id === c.id)}" aria-label="${esc(c.label)}">${ic(c.icon, 18)}<span>${esc(c.short)}</span></button>`).join('')}</div>
-        ${ch ? `<div class="n-angles">${ch.angles.map((a, i) => `<button class="n-angle ${i === S.angle ? 'on' : ''}" data-a="angle" data-v="${i}" data-tip="${esc(a.hint)}">${esc(a.label)}</button>`).join('')}</div>${ch.long ? '<p class="n-sub">Vidéos longues autorisées sur cette chaîne.</p>' : ''}` : ''}
+        <div class="n-chips">${C.all().map((c) => `<button class="n-chip ${ch && ch.id === c.id ? 'accent solid' : ''}" data-a="channel" data-v="${esc(c.id)}" aria-pressed="${!!(ch && ch.id === c.id)}" title="${esc(c.label)}">${esc(c.short)}</button>`).join('')}<button class="n-chip" data-a="page" data-v="channels">${ic('plus', 13)}Créer</button></div>
+        ${ch ? `<div class="n-angles">${ch.angles.map((a, i) => `<button class="n-angle ${i === S.angle ? 'on' : ''}" data-a="angle" data-v="${i}" data-tip="${esc(a.hint)}">${esc(a.label)}</button>`).join('')}</div>${ch.long ? '<p class="n-sub">Vidéos longues autorisées ici.</p>' : ''}` : ''}
       </section>`;
+    const zone = s.regions[0] || '';
+    const mixes = [[10, 'Mes goûts'], [30, 'Équilibré'], [60, 'Découverte']];
+    const mixOn = mixes.reduce((b, m) => (Math.abs(m[0] - s.discover) < Math.abs(b[0] - s.discover) ? m : b), mixes[1])[0];
     const words = maskList('words', 'tag', 'Mots bloqués', s.blockWords,
       (w) => `<li><span>${esc(w)}</span><button class="n-mbtn" data-a="rmBlock" data-v="${esc(w)}">Retirer</button></li>`, 'Aucun mot bloqué.',
-      `<form class="n-searchbox sm" data-s="railBlock">${ic('plus', 15)}<input name="w" placeholder="Bloquer un mot" aria-label="Bloquer un mot" autocomplete="off"></form>`);
+      `<form class="n-searchbox sm" data-s="railBlock">${ic('plus', 15)}<input name="w" placeholder="Bloquer un mot (ex. violence)" aria-label="Bloquer un mot" autocomplete="off"></form>`);
     const accounts = maskList('accounts', 'eyeoff', 'Comptes masqués', s.hiddenAccounts,
       (h) => `<li><span>@${esc(h)}</span><button class="n-mbtn" data-a="unhide" data-v="${esc(h)}">Démasquer</button></li>`, 'Aucun compte masqué. Touche H sur une vidéo pour masquer son compte.');
     const htmlL = `
-      <form class="n-searchbox" data-s="railSearch">${ic('search', 18)}<input name="w" placeholder="Chercher un sujet…" aria-label="Chercher un sujet" autocomplete="off"><kbd class="n-kbd">/</kbd></form>
-      ${topics ? `<div class="n-chips">${topics}</div>` : ''}
       ${channels}
       <section class="n-block"><div class="n-label">${ic('filter', 13)}Filtres</div>
-        <div class="n-tiles">
-          ${tile('tog', 'blockAI', 'spark', 'Sans IA', s.blockAI ? 'activé' : 'désactivé', s.blockAI)}
+        <div class="n-tiles two">
+          ${tile('tog', 'blockAI', 'spark', 'Sans IA', s.blockAI ? 'oui' : 'non', s.blockAI)}
+          ${tile('tog', 'noViolence', 'ban', 'Sans violence', s.noViolence ? 'oui' : 'non', s.noViolence)}
           ${tile('langs', '', 'lang', 'Langues', langLabel(s.languages), s.languages.length > 0)}
           ${tile('dur', '', 'clock', 'Durée max', ch && ch.long ? 'libre ici' : R.durationLabel(s.maxDuration), s.maxDuration > 0 && !(ch && ch.long))}
         </div>
       </section>
       <section class="n-block"><div class="n-label">${ic('globe', 13)}Zone</div>
-        <div class="n-zones">${T.REGIONS.map((r) => `<button class="n-zone ${s.regions.includes(r.id) ? 'on' : ''}" data-a="region" data-v="${r.id}" aria-pressed="${s.regions.includes(r.id)}"><b>${ZONE_CODE[r.id] || r.id.slice(0, 2).toUpperCase()}</b><span>${esc(ZONE_NAME[r.id] || r.label)}</span></button>`).join('')}</div>
-        ${s.regions.length ? `<div class="n-seg sm full">${[['only', 'Seulement'], ['prefer', 'Préférer'], ['exclude', 'Exclure']].map(([v, l]) => `<button class="${s.regionMode === v ? 'on' : ''}" data-a="regionMode" data-v="${v}">${l}</button>`).join('')}</div>` : ''}
+        <div class="n-selrow"><select class="n-select" data-rc="zone" aria-label="Zone"><option value="">Partout</option>${T.REGIONS.map((r) => `<option value="${r.id}" ${zone === r.id ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select>
+        ${zone ? `<select class="n-select" data-rc="zmode" aria-label="Comment appliquer la zone">${[['prefer', 'En priorité'], ['only', 'Seulement'], ['exclude', 'Sauf cette zone']].map(([v, l]) => `<option value="${v}" ${s.regionMode === v ? 'selected' : ''}>${l}</option>`).join('')}</select>` : ''}</div>
       </section>
-      <section class="n-block"><div class="n-label">${ic('algo', 13)}Mix du flux</div>
-        <input class="n-range" type="range" min="0" max="100" step="5" value="${s.discover}" data-r="discover" style="--p:${s.discover}%" aria-label="Part de découverte">
-        <div class="n-mixlab"><span>Mes goûts ${100 - s.discover} %</span><span>Découverte ${s.discover} %</span></div></section>
+      <section class="n-block"><div class="n-label">${ic('algo', 13)}Ce que tu vois</div>
+        <div class="n-seg sm full">${mixes.map(([v, l]) => `<button class="${mixOn === v ? 'on' : ''}" data-a="mix" data-v="${v}">${l}</button>`).join('')}</div>
+        <p class="n-sub">${mixOn === 10 ? 'Surtout des vidéos proches de ce que tu regardes déjà.' : mixOn === 60 ? 'Beaucoup de vidéos différentes de tes habitudes.' : 'Un peu de nouveautés au milieu de tes habitudes.'}</p></section>
       ${words}
       ${accounts}`;
     if (force || els.railL.__h !== htmlL) { els.railL.innerHTML = htmlL; els.railL.__h = htmlL; }
@@ -1520,7 +1553,16 @@
     const ctx = rankCtx();
     const up = windowCands(12).map((it) => [it, R.score(it, ctx)]).sort((a, b) => b[1] - a[1]).slice(0, 4).map((x) => x[0]);
     const f = funnel();
-    const htmlR = `
+    let ana = '';
+    if (companion) {
+      const sm = summary;
+      ana = `<section class="n-anacard"><div class="n-qhead"><div class="n-label">${ic('bulb', 13)}Analyse de ce fil</div><button class="n-chip" data-a="analyse">Détail</button></div>
+        ${!sm ? '<span class="n-sub">Calcul…</span>' : sm.error ? `<span class="n-sub">${esc(sm.error)}</span>`
+          : sm.sample < 20 ? `<span class="n-sub">Encore peu de tweets récoltés ici (${sm.sample}). Les conseils arrivent à partir d'une vingtaine.</span>`
+          : `<ul class="n-tips sm">${(sm.tips || []).slice(0, 4).map((t) => `<li>${esc(t)}</li>`).join('') || '<li>Rien qui se détache encore.</li>'}</ul><span class="n-sub">${sm.sample} tweets analysés · 30 jours</span>`}
+      </section>`;
+    }
+    const htmlR = `${ana}
       <section class="n-block"><div class="n-qhead"><div class="n-label">${ic('play', 13)}À suivre</div><button class="n-chip ${s.auto ? 'accent' : ''}" data-a="auto">${s.auto ? 'Auto' : 'Manuel'}</button></div>
         ${up.length ? up.map((it, i) => `<button class="n-q" data-a="playid" data-v="${esc(it.id)}"><span class="n-qthumb" style="background:${it.poster ? `center/cover url('${esc(it.poster)}'), ` : ''}${GRADS[i % 4]}"></span><span><b>@${esc(it.handle)}</b><span class="t">${esc(it.text || 'Vidéo')}</span></span></button>`).join('') : '<span class="n-sub">La file se remplit au fil du défilement.</span>'}
       </section>
@@ -1531,9 +1573,9 @@
           <div><span>Suivante / Précédente</span><kbd class="n-kbd">J K</kbd></div><div><span>Pause</span><kbd class="n-kbd">Espace</kbd></div>
           <div><span>Avancer / reculer</span><kbd class="n-kbd">← →</kbd></div><div><span>Volume · Muet</span><kbd class="n-kbd">+ − M</kbd></div>
           <div><span>Plein écran</span><kbd class="n-kbd">F</kbd></div><div><span>Masquer le compte</span><kbd class="n-kbd">H</kbd></div>
-          <div><span>J'aime · Ouvrir</span><kbd class="n-kbd">L O</kbd></div><div><span>Chercher</span><kbd class="n-kbd">/</kbd></div>
+          <div><span>J'aime · Ouvrir sur X</span><kbd class="n-kbd">L O</kbd></div><div><span>Chercher</span><kbd class="n-kbd">/</kbd></div>
           <div><span>Angle suivant (chaîne)</span><kbd class="n-kbd">C</kbd></div><div><span>Reposter · Discussion</span><kbd class="n-kbd">P D</kbd></div>
-          <div><span>Traduire · Marquer</span><kbd class="n-kbd">T A</kbd></div></div>` : ''}</section>
+          <div><span>Traduire · Actualiser</span><kbd class="n-kbd">T R</kbd></div></div>` : ''}</section>
       <button class="n-diagbtn" data-a="page" data-v="diag"><i class="n-dot ${diagLight()}"></i>Diagnostic : X ${diagLight() === 'ok' ? 'répond bien' : diagLight() === 'warn' ? 'à surveiller' : 'a changé ?'}</button>`;
     if (force || els.railR.__h !== htmlR) { els.railR.innerHTML = htmlR; els.railR.__h = htmlR; }
   }
@@ -1593,9 +1635,8 @@
     else if (lk === 'p') ACT.repost();
     else if (lk === 'd') toggleDrawer();
     else if (lk === 't') translate();
-    else if (lk === 'a') mark();
     else if (lk === 'c' && S.source === 'channel') launchChannel(S.channel, S.angle + 1);
-    else if (k === '/') { const i = $('input[name="w"]', els.railL); if (i) i.focus(); else openPage('search'); }
+    else if (k === '/') els.qinput.focus();
     else if (k === '>' || k === '<') {
       const i = RATES.indexOf(SET().rate);
       store.set({ rate: RATES[Math.max(0, Math.min(RATES.length - 1, i + (k === '>' ? 1 : -1)))] });

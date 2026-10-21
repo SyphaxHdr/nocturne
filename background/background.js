@@ -47,6 +47,7 @@ function companion(msg, sender) {
   const cmd = msg.cmd;
   if (cmd === 'ping') return ext.runtime.sendMessage(COMPANION, { type: 'ping' }).then((r) => r || { ok: false }, () => ({ ok: false }));
   if (cmd === 'open') return ext.runtime.sendMessage(COMPANION, { type: 'open' }).catch(() => ({ ok: false }));
+  if (cmd === 'summary') return ext.runtime.sendMessage(COMPANION, { type: 'summary', source: String(msg.source || '') }).then((r) => r || { ok: false, error: 'pas de réponse' }, () => ({ ok: false, error: 'module absent' }));
   if (cmd === 'mark') {
     return ext.runtime.sendMessage(COMPANION, { type: 'mark', id: String(msg.id), handle: String(msg.handle), source: String(msg.source || ''), tabId: sender.tab && sender.tab.id })
       .then((r) => r || { ok: false, error: 'pas de réponse' }, () => ({ ok: false, error: 'module Nocturne Analyse absent' }));
@@ -112,7 +113,7 @@ async function applyUpdateWhenIdle() {
 if (ext.runtime.onUpdateAvailable) ext.runtime.onUpdateAvailable.addListener(() => applyUpdateWhenIdle());
 // Arrivée depuis une version sans ce mécanisme (0.6.0 et avant) : les onglets X ouverts gardent l'ancien Nocturne en mémoire,
 // on les recharge une seule fois pour repartir propre.
-ext.runtime.onInstalled.addListener(async (d) => {
+if (ext.runtime.onInstalled) ext.runtime.onInstalled.addListener(async (d) => {
   if (!d || d.reason !== 'update') return;
   const tabs = await ext.tabs.query({ url: X_TABS }).catch(() => []);
   for (const t of tabs) ext.tabs.reload(t.id).catch(() => {});

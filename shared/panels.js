@@ -220,7 +220,7 @@
 
   const LANGS = [['fr', 'Français'], ['en', 'Anglais'], ['es', 'Espagnol'], ['ar', 'Arabe'], ['de', 'Allemand'], ['it', 'Italien'], ['pt', 'Portugais']];
   const RATES = [0.75, 1, 1.25, 1.5, 2];
-  const SHORTCUTS = [['Vidéo suivante', 'J ou ↓'], ['Vidéo précédente', 'K ou ↑'], ['Pause / lecture', 'Espace'], ['Reculer / avancer de 5 s', '← →'], ['Aller à 0 – 90 %', '0 – 9'], ['Volume', '+ / −'], ['Son coupé', 'M'], ['Vitesse', '< >'], ['Plein écran', 'F'], ['Aimer sur X', 'L'], ['Masquer le compte', 'H'], ['Chercher', '/'], ['Actualiser', 'R'], ['Ouvrir le post', 'O'], ['Angle suivant (chaîne)', 'C'], ['Reposter / retirer', 'P'], ['Discussion', 'D'], ['Traduire', 'T'], ['Marquer (module Analyse)', 'A'], ['Fermer', 'Échap']];
+  const SHORTCUTS = [['Vidéo suivante', 'J ou ↓'], ['Vidéo précédente', 'K ou ↑'], ['Pause / lecture', 'Espace'], ['Reculer / avancer de 5 s', '← →'], ['Aller à 0 – 90 %', '0 – 9'], ['Volume', '+ / −'], ['Son coupé', 'M'], ['Vitesse', '< >'], ['Plein écran', 'F'], ['Aimer sur X', 'L'], ['Masquer le compte', 'H'], ['Chercher', '/'], ['Actualiser', 'R'], ['Ouvrir le post', 'O'], ['Angle suivant (chaîne)', 'C'], ['Reposter / retirer', 'P'], ['Discussion', 'D'], ['Traduire', 'T'], ['Fermer', 'Échap']];
 
   function settings(container, ctx = {}) {
     const addForm = (name, key, ph) => `<form class="n-add" data-s="${name}"><input class="n-input sm" name="w" data-keep="${key}" placeholder="${ph}" autocomplete="off"><button class="n-btn" type="submit">Ajouter</button></form>`;
@@ -239,48 +239,50 @@
       const di = Math.max(0, R().DURATIONS.indexOf(s.maxDuration));
       const rng = (k, min, max, val, label) => `<div class="n-field"><div class="n-flabel"><span>${esc(label)}</span><b data-out-k="${k}">${rangeOut(k, val)}</b></div><input class="n-range" type="range" min="${min}" max="${max}" step="1" value="${val}" style="--p:${((val - min) / (max - min)) * 100}%" data-i="range" data-c="range" data-k="${k}" aria-label="${esc(label)}"></div>`;
       const row = (label, ctrl, hint) => `<div class="n-srow"><div><div class="n-sl">${esc(label)}</div>${hint ? `<div class="n-hint">${esc(hint)}</div>` : ''}</div>${ctrl}</div>`;
+      const mixes = [[10, 'Mes goûts'], [30, 'Équilibré'], [60, 'Découverte']];
+      const mixOn = mixes.reduce((b, m) => (Math.abs(m[0] - s.discover) < Math.abs(b[0] - s.discover) ? m : b), mixes[1])[0];
       return `<div class="n-cols">
         <div class="n-col">
-          <section class="n-card"><h3>Source du flux</h3>
-            ${seg('source', s.source, [['foryou', 'Pour vous'], ['following', 'Abonnements'], ['search', 'Recherche']])}
-            ${rng('discover', 0, 100, s.discover, 'Part de découverte')}
-            <p class="n-hint">Part des vidéos choisies hors de tes préférences, pour sortir de la routine.</p>
+          <section class="n-card"><h3>1. Lecture</h3>
+            ${row('Enchaîner les vidéos automatiquement', sw('auto', s.auto, 'Enchaînement automatique'))}
+            ${row('Son au démarrage', sw('muted', !s.muted, 'Son au démarrage'))}
+            ${rng('volume', 0, 100, Math.round(s.volume * 100), 'Volume')}
+            <div class="n-field"><div class="n-flabel"><span>Vitesse</span></div>${seg('rate', s.rate, RATES.map((r) => [r, String(r).replace('.', ',') + '×']))}</div>
+            <div class="n-field"><div class="n-flabel"><span>Qualité vidéo</span></div>${seg('videoQuality', s.videoQuality, [['rapide', 'Rapide'], ['nette', 'Plus nette']])}<p class="n-hint">« Rapide » démarre vite (X choisit la définition). « Plus nette » demande une meilleure image, mais charge plus longtemps.</p></div>
             ${rng('maxDuration', 0, R().DURATIONS.length - 1, di, 'Durée maximale d\'une vidéo')}
+          </section>
+          <section class="n-card"><h3>2. Ce que tu vois</h3>
+            <div class="n-field"><div class="n-flabel"><span>Ton mélange</span></div><div class="n-seg">${mixes.map(([v, l]) => `<button class="${mixOn === v ? 'on' : ''}" data-a="set" data-k="discover" data-v="${v}" data-t="number">${l}</button>`).join('')}</div>
+              <p class="n-hint">Mes goûts : surtout des vidéos proches de ce que tu regardes. Découverte : beaucoup de nouveautés.</p></div>
+            ${row('Sans vidéos IA', sw('blockAI', s.blockAI, 'Sans vidéos IA'), 'Écarte les vidéos déclarées générées par IA (libellés de X, #aiart, Sora, Veo…).')}
+            ${row('Sans violence', sw('noViolence', s.noViolence, 'Sans violence'), 'Écarte les vidéos qui parlent de bagarres, armes, guerre, accidents…')}
             <div class="n-field"><div class="n-flabel"><span>Langues</span></div><div class="n-chips">${LANGS.map(([c, l]) => `<button class="n-chip ${s.languages.includes(c) ? 'accent' : ''}" data-a="lang" data-v="${c}">${l}</button>`).join('')}<button class="n-chip ${s.languages.length ? '' : 'accent'}" data-a="lang" data-v="*">Toutes</button></div></div>
+            <div class="n-field"><div class="n-flabel"><span>Zone</span></div>
+              <div class="n-chips"><button class="n-chip ${s.regions.length ? '' : 'accent'}" data-a="zone" data-v="">Partout</button>${T().REGIONS.map((r) => `<button class="n-chip ${s.regions.includes(r.id) ? 'accent' : ''}" data-a="zone" data-v="${r.id}">${esc(r.label)}</button>`).join('')}</div>
+              ${s.regions.length ? seg('regionMode', s.regionMode, [['prefer', 'En priorité'], ['only', 'Seulement'], ['exclude', 'Sauf cette zone']]) : ''}
+              <p class="n-hint">D'après les lieux cités dans le texte du tweet.</p></div>
           </section>
-          <section class="n-card"><h3>Zone géographique</h3>
-            <p class="n-hint">Cible les vidéos selon le lieu cité dans le texte (villes, pays, personnalités). Une vidéo sans texte n'a pas de lieu détectable.</p>
-            <div class="n-chips">${T().REGIONS.map((r) => `<button class="n-chip ${s.regions.includes(r.id) ? 'accent' : ''}" data-a="region" data-v="${r.id}">${esc(r.label)}</button>`).join('')}</div>
-            ${seg('regionMode', s.regionMode, [['only', 'Seulement'], ['prefer', 'Préférer'], ['exclude', 'Exclure']])}
-            ${row('Garder celles sans lieu détecté', sw('regionKeepUnknown', s.regionKeepUnknown, 'Garder les vidéos sans lieu'), 'Pour « Seulement » : sinon une vidéo dont aucun lieu n\'est reconnu est écartée.')}
-          </section>
-          <section class="n-card"><h3>Filtres</h3>
-            <div class="n-field"><div class="n-label">Mots favoris</div><div class="n-chips">${s.favWords.map((w) => chip(w, 'accent', 'rmFav')).join('')}</div>${addForm('addFav', 'fav', 'Ajouter un mot favori')}</div>
+          <section class="n-card"><h3>3. Mots et comptes</h3>
+            <div class="n-field"><div class="n-label">Mots favoris (mis en avant)</div><div class="n-chips">${s.favWords.map((w) => chip(w, 'accent', 'rmFav')).join('')}</div>${addForm('addFav', 'fav', 'Ajouter un mot favori')}</div>
             ${mask('words', 'Mots bloqués', s.blockWords, 'rmBlock', (w) => w, 'Retirer', addForm('addBlock', 'block', 'Bloquer un mot'))}
             ${mask('accounts', 'Comptes masqués', s.hiddenAccounts, 'rmHide', (h) => '@' + h, 'Démasquer', addForm('addHide', 'hide', 'Masquer un compte (@pseudo)'))}
           </section>
         </div>
         <div class="n-col">
-          <section class="n-card"><h3>Lecture</h3>
-            ${row('Enchaînement automatique', sw('auto', s.auto, 'Enchaînement automatique'))}
-            ${row('Son activé par défaut', sw('muted', !s.muted, 'Son activé par défaut'))}
-            ${rng('volume', 0, 100, Math.round(s.volume * 100), 'Volume par défaut')}
-            <div class="n-field"><div class="n-flabel"><span>Vitesse de lecture</span></div>${seg('rate', s.rate, RATES.map((r) => [r, String(r).replace('.', ',') + '×']))}</div>
-            ${row('Masquer les vidéos générées par IA', sw('blockAI', s.blockAI, 'Masquer les vidéos IA'), 'Libellés X, hashtags explicites (#aiart, #aivideo…) et outils connus (Sora, Veo, Midjourney…). Une vidéo IA non déclarée peut passer.')}
+          <section class="n-card"><h3>4. Affichage</h3>
+            ${row('Fil au démarrage', seg('source', s.source === 'following' ? 'following' : 'foryou', [['foryou', 'Pour vous'], ['following', 'Abonnements']]))}
+            ${row('Taille de la vidéo', seg('size', s.size, [['s', 'Petite'], ['m', 'Moyenne'], ['l', 'Grande']]))}
+            ${row('Boutons d\'action', seg('side', s.side, [['left', 'À gauche'], ['right', 'À droite']]))}
+            ${row('Colonnes latérales', sw('rails', s.rails, 'Afficher les colonnes latérales'))}
           </section>
           <section class="n-card"><h3>Raccourcis clavier</h3><div class="n-keys">${SHORTCUTS.map(([a, k]) => `<div class="n-krow"><span>${a}</span><kbd class="n-kbd">${k}</kbd></div>`).join('')}</div></section>
-          <section class="n-card"><h3>Affichage</h3>
-            ${row('Boutons d\'action', seg('side', s.side, [['left', 'Gauche'], ['right', 'Droite']]))}
-            ${row('Taille de la vidéo', seg('size', s.size, [['s', 'S'], ['m', 'M'], ['l', 'L']]))}
-            ${row('Rails latéraux', sw('rails', s.rails, 'Afficher les rails latéraux'))}
-          </section>
           <section class="n-card"><h3>Vérifications</h3>
-            <div class="n-status-line"><i class="n-dot ${hostInfo ? (hostInfo.ok ? 'ok' : '') : ''}"></i>${hostInfo ? (hostInfo.ok ? 'Module Nocturne Analyse installé (touche A et bouton Analyse)' : 'Module Nocturne Analyse : non installé (facultatif)') : 'Vérification…'}</div>
+            <div class="n-status-line"><i class="n-dot ${hostInfo ? (hostInfo.ok ? 'ok' : '') : ''}"></i>${hostInfo ? (hostInfo.ok ? 'Module Nocturne Analyse installé : son analyse s\'affiche à droite du fil' : 'Module Nocturne Analyse : non installé (facultatif)') : 'Vérification…'}</div>
             ${ctx.openPage ? '<div class="n-btns"><button class="n-btn" data-a="diag">Diagnostic de X</button></div>' : ''}
           </section>
           <section class="n-card"><h3>Données</h3>
             <p class="n-hint">Tout est stocké dans ton navigateur. Rien n'est envoyé ailleurs.</p>
-            <div class="n-btns"><button class="n-btn" data-a="clearProfile">Effacer mon profil mesuré</button><button class="n-btn danger" data-a="resetSettings">Réinitialiser les réglages</button></div>
+            <div class="n-btns"><button class="n-btn" data-a="clearProfile">Effacer ce que Nocturne a appris</button><button class="n-btn danger" data-a="resetSettings">Réinitialiser les réglages</button></div>
           </section>
         </div>
       </div>`;
@@ -303,6 +305,7 @@
         set(t) { let v = t.dataset.v; if (t.dataset.t === 'number') v = Number(v); S().set({ [t.dataset.k]: v }); },
         toggle(t) { const k = t.dataset.k; S().set({ [k]: !S().state.settings[k] }); },
         region(t) { const s = S().state.settings; const v = t.dataset.v; S().set({ regions: s.regions.includes(v) ? s.regions.filter((x) => x !== v) : [...s.regions, v] }); },
+        zone(t) { S().set({ regions: t.dataset.v ? [t.dataset.v] : [] }); },
         lang(t) {
           const s = S().state.settings;
           const v = t.dataset.v;
@@ -314,7 +317,7 @@
         rmHide: rm('hiddenAccounts'),
         eye(t) { show[t.dataset.v] = !show[t.dataset.v]; mountRef.draw(); },
         diag() { ctx.openPage('diag'); },
-        clearProfile() { if (confirm('Effacer les statistiques mesurées et tes retours « plus / moins comme ça » ?')) S().clearProfile(); },
+        clearProfile() { if (confirm('Effacer ce que Nocturne a appris de ce que tu regardes ?')) S().clearProfile(); },
         resetSettings() { if (confirm('Remettre tous les réglages par défaut ?')) S().resetSettings(); },
       },
       input: {
@@ -391,7 +394,7 @@
   function channels(container, ctx) {
     const card = (c, cur) => `<section class="n-chcard ${cur && cur.id === c.id ? 'on' : ''}"><header>${ic(c.icon, 24)}<h3>${esc(c.label)}</h3>${c.custom ? `<button class="n-x" data-a="rmChan" data-v="${esc(c.id)}" aria-label="Supprimer la chaîne ${esc(c.label)}" style="margin-left:auto">×</button>` : ''}</header>
         ${c.long ? '<p class="n-sub">Vidéos longues autorisées : la durée max ne s\'applique pas ici.</p>' : ''}
-        ${c.angles.map((a, i) => `<button class="n-chang ${cur && cur.id === c.id && cur.angle === i ? 'on' : ''}" data-a="go" data-ch="${esc(c.id)}" data-v="${i}"><b>${esc(a.label)}</b><span>${esc(a.hint)}</span></button>`).join('')}</section>`;
+        ${c.angles.map((a, i) => { const q = (S().state.quality || {})['chaine:' + c.id + '/' + i]; return `<button class="n-chang ${cur && cur.id === c.id && cur.angle === i ? 'on' : ''}" data-a="go" data-ch="${esc(c.id)}" data-v="${i}"><b>${esc(a.label)}</b><span>${esc(a.hint)}</span>${q && q.n >= 5 ? `<span class="n-qual"><i style="width:${Math.round((q.good / q.n) * 100)}%"></i></span><span class="n-sub">${Math.round((q.good / q.n) * 100)} % des vidéos marchent bien (${q.n} vues)</span>` : ''}</button>`; }).join('')}</section>`;
     const view = () => {
       const cur = ctx.current ? ctx.current() : null;
       const mine = NCT.channels.all().filter((c) => c.custom);

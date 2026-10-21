@@ -55,6 +55,7 @@
     bubble: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>',
     flag: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
     pulse: '<path d="M3 12h4l2-6 4 12 2-6h6"/>',
+    shrink: '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>',
     channels: '<rect x="3" y="3" width="7.5" height="7.5" rx="1"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1"/>',
   };
 
