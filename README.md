@@ -44,7 +44,8 @@ Sur x.com : bouton **Nocturne** en bas de page, icône de la barre d'outils, ou 
 ## Fonctions
 
 - **Lecture** : Nocturne lit les vidéos de la page de X et fait défiler la page pour en trouver d'autres. Il ne télécharge
-  rien lui-même et ne modifie pas X.
+  rien lui-même et ne modifie pas X. La vidéo affichée est celle de X, empruntée le temps de la lecture puis remise à sa
+  place : aucune image n'est recopiée, Firefox l'affiche comme n'importe quelle vidéo.
 - **Chaînes** : Jeux vidéo, Films & séries, Musique, DevOps & tech, Documentaires, Science, Sport, Humour, Cuisine,
   Nature, Art, et tes chaînes perso (bouton **+ Créer** : mots, hashtags, comptes). Elles utilisent la recherche de X.
   Chaque angle d'une chaîne reçoit une note automatique (part des vidéos qui ont marché).
@@ -57,8 +58,8 @@ Sur x.com : bouton **Nocturne** en bas de page, icône de la barre d'outils, ou 
 - **Diagnostic** : vérifie que Nocturne retrouve tout dans la page de X (utile quand X change son site).
 - **Sobriété** : rendu au rythme des images de la vidéo, rien ne tourne en pause, et la page de X est rechargée proprement
   après une longue session pour ne pas saturer la mémoire.
-- **Démarrage rapide** : qualité « Rapide » par défaut (X choisit la définition) ; une vidéo qui ne démarre pas en 8 s
-  est passée.
+- **Démarrage rapide** : une vidéo qui ne démarre pas en 8 s est passée. Si trois de suite ne démarrent pas, Nocturne
+  s'arrête et l'explique (c'est alors le lecteur vidéo de Firefox qui est bloqué : il faut redémarrer Firefox).
 - **Écrans étroits** : la barre du haut et les colonnes se replient ; en plein écran, une barre « Quitter le plein écran »
   apparaît au passage de la souris.
 - Carte **Analyse de ce fil** : visible seulement si un module complémentaire privé, installé à part, est présent.
@@ -66,7 +67,7 @@ Sur x.com : bouton **Nocturne** en bas de page, icône de la barre d'outils, ou 
 ## Publier une nouvelle version
 
 1. Monter la version dans `manifest.json` et `package.json`.
-2. `git tag v0.7.0 && git push --tags`.
+2. `git tag v0.7.1 && git push --tags`.
 3. L'Action *release* teste, fait signer par Mozilla (secrets du dépôt `AMO_JWT_ISSUER` et `AMO_JWT_SECRET`), publie le
    `.xpi` et met à jour `updates.json`.
 
