@@ -98,4 +98,24 @@ ext.runtime.onMessage.addListener((msg, sender) => {
   }
 });
 
+/* ---------- Mises à jour sans blocage ---------- */
+// Firefox attend notre feu vert (runtime.reload) avant d'installer une nouvelle version : on ne la pose que lorsqu'aucun
+// onglet X n'est ouvert (sinon on réessaie chaque minute ; au pire elle s'installe au prochain démarrage de Firefox).
+const X_TABS = ['https://x.com/*', 'https://twitter.com/*'];
+let updateTimer = null;
+async function applyUpdateWhenIdle() {
+  clearTimeout(updateTimer);
+  const tabs = await ext.tabs.query({ url: X_TABS }).catch(() => [{}]);
+  if (!tabs.length) return ext.runtime.reload();
+  updateTimer = setTimeout(applyUpdateWhenIdle, 60000);
+}
+if (ext.runtime.onUpdateAvailable) ext.runtime.onUpdateAvailable.addListener(() => applyUpdateWhenIdle());
+// Arrivée depuis une version sans ce mécanisme (0.6.0 et avant) : les onglets X ouverts gardent l'ancien Nocturne en mémoire,
+// on les recharge une seule fois pour repartir propre.
+ext.runtime.onInstalled.addListener(async (d) => {
+  if (!d || d.reason !== 'update') return;
+  const tabs = await ext.tabs.query({ url: X_TABS }).catch(() => []);
+  for (const t of tabs) ext.tabs.reload(t.id).catch(() => {});
+});
+
 ext.commands.onCommand.addListener((cmd) => { if (cmd === 'toggle-nocturne') toggleOnActiveTab(); });

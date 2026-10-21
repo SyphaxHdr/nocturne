@@ -15,6 +15,17 @@
   if (!NCT || window.top !== window || window.__nocturne) return;
   window.__nocturne = true;
 
+  // Une seule instance vivante par page. Après une mise à jour de l'extension, Firefox injecte la nouvelle version dans les
+  // pages déjà ouvertes : la nouvelle prend la main (jeton sur <html>), l'ancienne voit qu'elle n'est plus la bonne et s'arrête.
+  const ME = Math.random().toString(36).slice(2);
+  const alive = () => {
+    const de = document.documentElement;
+    if (!de) return true;
+    if (!de.dataset.nocturne) { de.dataset.nocturne = ME; return true; } // attribut effacé par la page : on le remet
+    return de.dataset.nocturne === ME;
+  };
+  let retired = false;
+
   const ext = typeof browser !== 'undefined' ? browser : chrome;
   const { store, themes: T, rank: R, channels: C, panels: P, observe: O, icon: ic, esc } = NCT;
   // Le numéro de version dans l'URL de la feuille de style force Firefox à recharger le CSS après une mise à jour (sinon il peut garder l'ancien en cache).
@@ -306,6 +317,7 @@
   }
 
   async function goNext() {
+    if (!alive()) return retire();
     unlockSound();
     stopRetry();
     if (S.pos < S.hist.length - 1) return playAt(S.pos + 1);
@@ -668,6 +680,7 @@
   // des ralentissements (si la page rame plusieurs fois de suite, on la recharge proprement à la vidéo suivante).
   let tickLast = 0;
   function tick() {
+    if (!alive()) return retire();
     const now = performance.now();
     const lag = tickLast ? now - tickLast - 1500 : 0;
     tickLast = now;
@@ -1234,8 +1247,14 @@
     els.overlay = $('.n-overlay', shadow);
     els.markbtn.hidden = true; // visible seulement si le module Nocturne Analyse est installé
     // À document_start la racine peut ne pas exister encore : on attend qu'elle apparaisse.
-    if (document.documentElement) document.documentElement.appendChild(host);
-    else new MutationObserver((_, o) => { if (document.documentElement) { o.disconnect(); document.documentElement.appendChild(host); } }).observe(document, { childList: true });
+    // un écran laissé par une ancienne version (mise à jour pendant que la page était ouverte) est retiré
+    const install = () => {
+      document.querySelectorAll('#nocturne-host').forEach((old) => { if (old !== host) old.remove(); });
+      document.documentElement.dataset.nocturne = ME;
+      document.documentElement.appendChild(host);
+    };
+    if (document.documentElement) install();
+    else new MutationObserver((_, o) => { if (document.documentElement) { o.disconnect(); install(); } }).observe(document, { childList: true });
 
     // clics (délégation)
     shadow.addEventListener('click', (e) => {
@@ -1541,6 +1560,8 @@
   };
 
   function onKey(e) {
+    if (retired) return;
+    if (!alive()) return retire();
     if (!S.open) return;
     // Quand on écrit dans un champ (recherche, mots bloqués…), on ne touche à rien : chiffres, pavé numérique et lettres vont au champ.
     if (isEditable(e)) {
@@ -1632,6 +1653,16 @@
     else goNext();
   }
 
+  // Arrêt complet de cette instance (une version plus récente a pris le relais) : plus de minuterie, plus de vidéo, plus d'écran.
+  function retire() {
+    if (retired) return;
+    retired = true;
+    try { S.open = false; S.token++; stopTimers(); stopRetry(); } catch (_) {}
+    try { detach(); } catch (_) {}
+    try { window.removeEventListener('keydown', onKey, true); } catch (_) {}
+    try { if (host && host.isConnected) host.remove(); } catch (_) {}
+  }
+
   function closeOverlay() {
     S.open = false;
     S.token++;
@@ -1700,7 +1731,7 @@
     store.on(onStore);
     document.addEventListener('visibilitychange', () => { tickLast = 0; if (!document.hidden) scheduleRails(); });
     ext.runtime.onMessage.addListener((msg) => {
-      if (msg && msg.type === 'nct-toggle') S.open ? closeOverlay() : openOverlay();
+      if (msg && msg.type === 'nct-toggle' && !retired) S.open ? closeOverlay() : openOverlay();
     });
     const auto = readAutorun();
     if (auto && auto.open) openOverlay(auto); // l'overlay se rouvre tout de suite, sans montrer la page de X

@@ -14,6 +14,9 @@ Avec le `.xpi` signé par Mozilla (voir les [releases](https://github.com/Syphax
 Ensuite **Firefox installe les nouvelles versions tout seul** (`update_url` → `updates.json`, environ une fois par jour, ou
 *about:addons → roue → Rechercher des mises à jour*).
 
+Une nouvelle version ne s'installe que lorsqu'aucun onglet X n'est ouvert (ou au redémarrage de Firefox), jamais en plein
+visionnage.
+
 Ne charge pas aussi le dossier par `about:debugging` : la copie temporaire porte le même identifiant et cache la version
 installée.
 
