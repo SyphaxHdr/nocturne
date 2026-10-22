@@ -58,7 +58,7 @@
       if (mode === 'only' && !reg && !(st.regionKeepUnknown && !(item.regions || []).length)) return 'region';
     }
     for (const w of st.blockWords || []) if (hasWord(item.norm, w)) return 'word';
-    if (st.noViolence && (item.themes || []).includes('violence')) return 'violence';
+    if (st.noViolence && (item.sensitive || (item.themes || []).includes('violence'))) return 'violence';
     for (const id of item.themes) {
       const t = st.targets && st.targets[id];
       if (typeof t === 'number' && t <= HARD_BLOCK) return 'theme';
@@ -70,12 +70,43 @@
   }
   const excluded = (item, st) => reason(item, st) !== null;
 
+  /* ---- Mélange voulu (tableau de bord de l'algo) ----
+   * Les cibles réglées (ex. Jeux vidéo 100 %, Actu 60 %) deviennent des parts du flux, ramenées à 80 % au total pour
+   * toujours laisser au moins 20 % au fil de X lui-même (ici 50 % jeux, 30 % actu, 20 % Pour vous).
+   * Elles se comparent aux dernières vidéos réellement lues dans Nocturne. */
+  const MIX_MAX = 0.8;
+  function wanted(targets) {
+    const t = Object.entries(targets || {}).filter(([id, v]) => typeof v === 'number' && v > HARD_BLOCK && id !== 'violence');
+    const sum = t.reduce((a, [, v]) => a + v, 0);
+    const k = sum > MIX_MAX ? MIX_MAX / sum : 1;
+    return Object.fromEntries(t.map(([id, v]) => [id, v * k]));
+  }
+  // Part de chaque thème dans les dernières vidéos lues (log : une liste de thèmes par vidéo).
+  function mixShares(log, n = 12) {
+    const recent = (log || []).slice(-n);
+    const out = {};
+    for (const th of recent) for (const id of th || []) out[id] = (out[id] || 0) + 1;
+    for (const id in out) out[id] /= recent.length || 1;
+    return out;
+  }
+  // Le thème qui manque le plus (écart entre la part voulue et la part lue), s'il manque d'au moins minGap.
+  function lacking(targets, log, minGap = 0.12) {
+    const w = wanted(targets);
+    const sh = mixShares(log);
+    let best = null;
+    for (const id of Object.keys(w)) {
+      const gap = w[id] - (sh[id] || 0);
+      if (gap >= minGap && (!best || gap > best.gap)) best = { id, gap, want: w[id], share: sh[id] || 0 };
+    }
+    return best;
+  }
+
   function score(item, ctx) {
     const st = ctx.settings;
     const fb = ctx.feedback || { handles: {}, words: {}, themes: {} };
     let s = 0;
     for (const id of item.themes) {
-      const target = st.targets && st.targets[id];
+      const target = ctx.wanted ? ctx.wanted[id] : st.targets && st.targets[id];
       const m = (ctx.shares && ctx.shares[id]) || 0;
       if (typeof target === 'number') s += (target - m) * 3;
       s += (fb.themes[id] || 0) * 0.5;
@@ -138,5 +169,5 @@
   const DURATIONS = [30, 60, 120, 180, 300, 600, 0];
   const durationLabel = (s) => (s === 0 ? 'Illimitée' : s < 60 ? s + ' s' : s / 60 + ' min');
 
-  NCT.rank = { isAI, inRegion, HARD_BLOCK, measured, reason, excluded, score, pick, verdict, LEVELS, buildSearchQuery, searchUrl, DURATIONS, durationLabel };
+  NCT.rank = { isAI, inRegion, HARD_BLOCK, measured, wanted, mixShares, lacking, reason, excluded, score, pick, verdict, LEVELS, buildSearchQuery, searchUrl, DURATIONS, durationLabel };
 })();

@@ -1,6 +1,6 @@
 {
   "name": "nocturne",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "private": true,
   "description": "Nocturne : flux plein écran des vidéos de X pour Firefox",
   "scripts": {

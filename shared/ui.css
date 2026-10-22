@@ -455,7 +455,6 @@ button.n-chip:hover { background: var(--surface2); }
 .n-overlay.fs .n-act span { display: none; }
 .n-overlay.fs .n-act.strong { background: var(--text); height: 52px; }
 .n-overlay.fs .n-act.on { background: var(--accent); }
-.n-overlay.wide .n-rail.r { display: none; }
 .n-overlay.fs.idle, .n-overlay.fs.idle .n-frame { cursor: none; }
 .n-overlay.fs.idle .n-controls, .n-overlay.fs.idle .n-actions, .n-overlay.fs.idle .n-pill { opacity: 0; pointer-events: none; }
 

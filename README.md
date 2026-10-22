@@ -51,6 +51,11 @@ Sur x.com : bouton **Nocturne** en bas de page, icône de la barre d'outils, ou 
   Chaque angle d'une chaîne reçoit une note automatique (part des vidéos qui ont marché).
 - **Chiffres sous la vidéo** : vues, j'aime, reposts, réponses tels que X les affiche, et un verdict automatique
   (Discret, Moyen, Marche bien, Carton) calculé à partir des vues, de l'engagement et de la vitesse depuis la publication.
+- **Tableau de bord de l'algo** : dans « Pour vous », les thèmes que tu montes sont vraiment respectés. Quand l'un d'eux
+  manque, Nocturne prend une vidéo de ce thème dans le fil de X, ou fait un petit détour (3 à 6 vidéos d'une recherche
+  X sur ce thème) avant de revenir à Pour vous. Les parts sont ramenées à 80 % au plus : il reste toujours du vrai Pour vous.
+- **Sans violence** : écarte les vidéos que X marque comme sensibles et celles qui parlent de bagarres, agressions,
+  armes, guerre ou accidents graves (sans écarter un « boss fight » de jeu vidéo).
 - **Filtres** : vidéos IA, violence, langues, zone (une liste), mots bloqués, comptes masqués (listes repliées derrière un
   œil), durée. « Ce que tu vois » : Mes goûts, Équilibré ou Découverte.
 - **Discussion** : sur demande, Nocturne ouvre quelques secondes la page du tweet dans une petite fenêtre, lit les réponses
@@ -67,9 +72,14 @@ Sur x.com : bouton **Nocturne** en bas de page, icône de la barre d'outils, ou 
 ## Publier une nouvelle version
 
 1. Monter la version dans `manifest.json` et `package.json`.
-2. `git tag v0.7.1 && git push --tags`.
+2. `git tag v0.7.2 && git push --tags`.
 3. L'Action *release* teste, fait signer par Mozilla (secrets du dépôt `AMO_JWT_ISSUER` et `AMO_JWT_SECRET`), publie le
    `.xpi` et met à jour `updates.json`.
+
+## Son
+
+Firefox coupe le son des vidéos lancées automatiquement tant que tu n'as pas cliqué dans la page. Pour ne jamais avoir à
+cliquer : sur x.com, icône à gauche de l'adresse > *Lecture automatique* > *Autoriser l'audio et la vidéo*.
 
 ## Développement
 
