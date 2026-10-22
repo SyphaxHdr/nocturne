@@ -154,7 +154,7 @@
           ${empty}
           ${radar(themes, m.shares, draft)}
           <div class="n-legend"><span><i class="n-sw violet"></i>Mesuré</span><span><i class="n-sw dash"></i>Cible réglée</span></div>
-          <div class="n-note">L'algo de X reste celui de X. Nocturne le pousse en réordonnant les vidéos reçues, en filtrant et en lançant des recherches ciblées.</div>
+          <div class="n-note">Dans « Pour vous », Nocturne respecte ces cibles : quand un thème que tu montes manque dans ce que tu viens de voir, il prend une vidéo de ce thème dans le fil de X, ou fait un petit détour (3 à 6 vidéos d'une recherche X sur ce thème) puis revient à Pour vous. Les parts sont ramenées à 80 % au plus, pour garder toujours un peu du vrai Pour vous : Jeux 100 % et Actu 60 % donnent environ 50 % de jeux, 30 % d'actu et 20 % du fil de X.</div>
         </section>
         <section class="n-card n-themes-card">
           <div class="n-head"><div><h3>Ajuster les thèmes</h3><p class="n-sub">Déplace la cible : plus (vert) ou moins (rouge). Sous 3 %, le thème est exclu.</p></div></div>
@@ -254,7 +254,7 @@
             <div class="n-field"><div class="n-flabel"><span>Ton mélange</span></div><div class="n-seg">${mixes.map(([v, l]) => `<button class="${mixOn === v ? 'on' : ''}" data-a="set" data-k="discover" data-v="${v}" data-t="number">${l}</button>`).join('')}</div>
               <p class="n-hint">Mes goûts : surtout des vidéos proches de ce que tu regardes. Découverte : beaucoup de nouveautés.</p></div>
             ${row('Sans vidéos IA', sw('blockAI', s.blockAI, 'Sans vidéos IA'), 'Écarte les vidéos déclarées générées par IA (libellés de X, #aiart, Sora, Veo…).')}
-            ${row('Sans violence', sw('noViolence', s.noViolence, 'Sans violence'), 'Écarte les vidéos qui parlent de bagarres, armes, guerre, accidents…')}
+            ${row('Sans violence', sw('noViolence', s.noViolence, 'Sans violence'), 'Écarte les vidéos que X marque comme sensibles et celles qui parlent de bagarres, agressions, armes, guerre, accidents graves…')}
             <div class="n-field"><div class="n-flabel"><span>Langues</span></div><div class="n-chips">${LANGS.map(([c, l]) => `<button class="n-chip ${s.languages.includes(c) ? 'accent' : ''}" data-a="lang" data-v="${c}">${l}</button>`).join('')}<button class="n-chip ${s.languages.length ? '' : 'accent'}" data-a="lang" data-v="*">Toutes</button></div></div>
             <div class="n-field"><div class="n-flabel"><span>Zone</span></div>
               <div class="n-chips"><button class="n-chip ${s.regions.length ? '' : 'accent'}" data-a="zone" data-v="">Partout</button>${T().REGIONS.map((r) => `<button class="n-chip ${s.regions.includes(r.id) ? 'accent' : ''}" data-a="zone" data-v="${r.id}">${esc(r.label)}</button>`).join('')}</div>
@@ -276,6 +276,7 @@
           </section>
           <section class="n-card"><h3>Raccourcis clavier</h3><div class="n-keys">${SHORTCUTS.map(([a, k]) => `<div class="n-krow"><span>${a}</span><kbd class="n-kbd">${k}</kbd></div>`).join('')}</div></section>
           <section class="n-card"><h3>Vérifications</h3>
+            ${(() => { let pol = null; try { pol = navigator.getAutoplayPolicy ? navigator.getAutoplayPolicy('mediaelement') : null; } catch (_) {} return pol && pol !== 'allowed' ? '<div class="n-status-line"><i class="n-dot"></i>Firefox coupe le son automatique sur X. Pour ne plus avoir à cliquer : icône à gauche de l\'adresse (x.com) &gt; Lecture automatique &gt; Autoriser l\'audio et la vidéo.</div>' : ''; })()}
             <div class="n-status-line"><i class="n-dot ${hostInfo ? (hostInfo.ok ? 'ok' : '') : ''}"></i>${hostInfo ? (hostInfo.ok ? 'Module Nocturne Analyse installé : son analyse s\'affiche à droite du fil' : 'Module Nocturne Analyse : non installé (facultatif)') : 'Vérification…'}</div>
             ${ctx.openPage ? '<div class="n-btns"><button class="n-btn" data-a="diag">Diagnostic de X</button></div>' : ''}
           </section>

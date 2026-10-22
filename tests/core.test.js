@@ -186,3 +186,32 @@ test('filtre sans violence', () => {
   assert.equal(R.reason(v, st({ noViolence: true })), 'violence');
   assert.equal(R.reason(v, st({ noViolence: false })), null);
 });
+
+test('sans violence : mots ambigus et avertissement de X', () => {
+  const on = st({ noViolence: true });
+  assert.equal(R.reason(mk('Il a été tabassé devant chez lui'), on), 'violence');
+  assert.equal(R.reason(mk('Police violence in the street'), on), 'violence');
+  assert.equal(R.reason(mk('âmes sensibles s’abstenir'), on), 'violence');
+  assert.equal(R.reason(mk('Accident spectaculaire, la police sur place'), on), 'violence');
+  assert.equal(R.reason(mk('Un boss fight incroyable dans mon jeu'), on), null); // jeu vidéo : « fight » ne compte pas
+  assert.equal(R.reason(mk('new kill streak record in fortnite'), on), null);
+  assert.equal(R.reason(mk('Recette du gâteau au chocolat'), on), null);
+  assert.equal(R.reason(mk('Une vidéo', 'x', { sensitive: true }), on), 'violence'); // X l'a marquée sensible
+  assert.equal(R.reason(mk('Une vidéo', 'x', { sensitive: true }), st()), null);
+});
+
+test('mélange du tableau de bord : parts voulues et thème qui manque', () => {
+  const w = R.wanted({ gaming: 1, news: 0.6, politics: 0.02 });
+  assert.equal(Math.round(w.gaming * 1000), 500); // ramené à 80 % au total : 20 % restent au fil de X
+  assert.equal(Math.round(w.news * 1000), 300);
+  assert.equal(Math.round(R.wanted({ music: 0.4 }).music * 100), 40);
+  assert.ok(!('politics' in w)); // sous 3 % : thème exclu, pas visé
+  assert.equal(R.lacking({ gaming: 1, news: 0.6 }, []).id, 'gaming');
+  const log = [['news'], ['news'], ['news'], ['news'], ['gaming']];
+  assert.equal(R.lacking({ gaming: 1, news: 0.6 }, log).id, 'gaming');
+  assert.equal(R.lacking({ gaming: 1, news: 0.6 }, [['gaming'], ['gaming'], ['gaming'], ['news']], 0.15), null); // écart trop petit
+  assert.equal(R.lacking({}, log), null);
+  assert.ok(C.forTheme('gaming').length >= 2);
+  assert.ok(C.forTheme('news').length >= 1);
+  assert.equal(C.forTheme('violence').length, 0);
+});

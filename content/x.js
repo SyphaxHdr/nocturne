@@ -85,6 +85,10 @@
     show: { words: false, accounts: false }, // listes repliées derrière l'œil
     returnTo: null, // page de tweet ouverte pour revoir une vidéo : où revenir ensuite
     drawer: null, // tweet affiché dans le volet « Discussion »
+    mixLog: [], // thèmes des dernières vidéos lues (pour respecter le mélange du tableau de bord)
+    mixAngle: {}, // recherche suivante à utiliser pour chaque thème
+    mixFail: {}, // thème → moment où son détour n'a rien donné
+    detour: null, // { theme, left } : quelques vidéos d'un thème qui manque, puis retour à Pour vous
   };
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -101,6 +105,9 @@
 
   /* ======================= Lecture de la timeline X (lecture seule) ======================= */
 
+  // Avertissement de X sur un média (« Contenu potentiellement sensible », « Content warning: Violence »…) : c'est X lui-même
+  // qui l'a repéré. Avec « Sans violence », ces vidéos sont écartées.
+  const SENSITIVE = /contenu (potentiellement )?sensible|sensitive content|content warning|avertissement (relatif au |de |sur le )?contenu|graphic violence|violence graphique|m[ée]dia sensible|sensitive media/i;
   const AI_LABEL = /made with ai|ai[- ]generated|cr[ée]{1,2} (avec|par) (l[’']?)?ia|g[ée]n[ée]r[ée]e? (avec|par) (l[’']?)?ia/i;
 
   function statusInfo(article) {
@@ -142,6 +149,7 @@
         lang: (textEl && textEl.getAttribute('lang')) || '',
         poster: (video && video.poster) || '',
         ai: AI_LABEL.test(article.textContent || ''),
+        sensitive: SENSITIVE.test(article.textContent || ''),
         y: article.getBoundingClientRect().top + window.scrollY,
         themes: T.classify(text + ' ' + name),
         regions: T.regions(text + ' ' + name),
@@ -212,7 +220,7 @@
 
   function detectSource() {
     if (location.pathname.startsWith('/search')) {
-      S.source = S.channel && S.chKey === location.search ? 'channel' : 'search';
+      S.source = S.detour ? 'foryou' : S.channel && S.chKey === location.search ? 'channel' : 'search';
       S.query = new URLSearchParams(location.search).get('q') || '';
     } else if (location.pathname === '/home') {
       if (S.source === 'search' || S.source === 'other' || S.source === 'channel') S.source = 'foryou';
@@ -237,7 +245,56 @@
 
   /* ======================= Sélection des vidéos ======================= */
 
-  const rankCtx = () => ({ settings: SET(), shares: R.measured(store.state.profile.views).shares, feedback: store.state.feedback });
+  const rankCtx = () => ({
+    settings: SET(),
+    wanted: R.wanted(SET().targets),
+    shares: S.mixLog.length >= 4 ? R.mixShares(S.mixLog) : R.measured(store.state.profile.views).shares,
+    feedback: store.state.feedback,
+  });
+
+  /* ---- Mélange de « Pour vous » selon le tableau de bord ----
+   * X ne donne que son propre fil. Quand un thème que tu as monté (ex. Jeux vidéo) manque dans ce que tu viens de voir,
+   * Nocturne prend d'abord une vidéo de ce thème déjà affichée par X ; s'il n'y en a pas, il fait un petit détour :
+   * quelques vidéos d'une recherche X sur ce thème, puis retour à Pour vous. */
+  const DETOUR_LEN = 6;
+  function mixNeed() {
+    if (S.source !== 'foryou' || S.detour || S.returnTo) return null;
+    // un thème dont le dernier détour n'a rien donné (recherche vide ou tout filtré) est laissé de côté 10 minutes
+    const t = Object.fromEntries(Object.entries(SET().targets || {}).filter(([id]) => !(S.mixFail[id] && Date.now() - S.mixFail[id] < 600000)));
+    return R.lacking(t, S.mixLog, 0.12);
+  }
+  function nearestOf(list) {
+    const here = cur() && isFinite(cur().y) ? cur().y : window.scrollY + window.innerHeight / 2;
+    let best = null, bd = Infinity;
+    for (const it of list) { const d = isFinite(it.y) ? Math.abs(it.y - here) + (it.y < here ? 400 : 0) : 1e9; if (d < bd) { bd = d; best = it; } }
+    return best;
+  }
+  function startDetour(need, tries = 0) {
+    const list = C.forTheme(need.id);
+    const i = (S.mixAngle[need.id] || 0) % list.length;
+    S.mixAngle = { ...S.mixAngle, [need.id]: i + 1 };
+    const len = Math.max(3, Math.min(DETOUR_LEN, Math.round((need.gap || 0.4) * 12))); // plus le thème manque, plus le détour est long
+    S.detour = { theme: need.id, left: len, len, tries };
+    const a = list[i];
+    busy('Ton mélange : ' + (T.LABEL[need.id] || need.id) + '…');
+    go(R.searchUrl(a.q, a.f), payload({ source: 'foryou', tries: 0 }));
+  }
+  function endDetour() {
+    const d = S.detour;
+    if (d && d.left >= (d.len || DETOUR_LEN)) { // cette recherche n'a rien donné : on essaie une autre recherche du même thème, une fois
+      if ((d.tries || 0) < 1 && C.forTheme(d.theme).length > 1) return startDetour({ id: d.theme }, (d.tries || 0) + 1);
+      S.mixFail = { ...S.mixFail, [d.theme]: Date.now() };
+    }
+    S.detour = null;
+    // un autre thème manque nettement : on enchaîne directement sur sa recherche (un aller-retour par Pour vous de moins)
+    const next = d && d.left < (d.len || DETOUR_LEN) ? mixNeed() : null;
+    if (next && next.id !== d.theme && next.gap >= 0.15 && C.forTheme(next.id).length) return startDetour(next);
+    stopRetry();
+    S.token++;
+    detach();
+    busy('Retour à Pour vous…');
+    go('https://x.com/home', payload({ source: 'foryou', tries: 0 }));
+  }
 
   // Raison du filtrage d'une vidéo, calculée une seule fois tant que les réglages ne changent pas.
   function why(it) {
@@ -331,14 +388,24 @@
     stopRetry();
     if (S.pos < S.hist.length - 1) return playAt(S.pos + 1);
     if (S.returnTo) return returnToFeed(); // on était sur la page d'un tweet : retour au flux pour la suite
+    if (S.detour && S.detour.left <= 0) return endDetour(); // détour du mélange terminé : retour à Pour vous
     if (needsClean()) return cleanReload();
     const token = ++S.token;
     detach();
     clearState();
     busy('Chargement…');
-    const want = S.hist.length ? 3 : 1;
-    if (pool().length < want) { await fill(want); if (token !== S.token) return; }
-    const item = R.pick(nextCands(), rankCtx());
+    let item = null;
+    const need = mixNeed();
+    if (need) {
+      collect();
+      item = nearestOf(pool().filter((it) => it.themes.includes(need.id))); // déjà dans le fil de X
+      if (!item && need.gap >= 0.15 && C.forTheme(need.id).length) return startDetour(need);
+    }
+    if (!item) {
+      const want = S.hist.length ? 3 : 1;
+      if (pool().length < want) { await fill(want); if (token !== S.token) return; }
+      item = R.pick(nextCands(), rankCtx());
+    }
     if (!item) return noMore();
     S.hist.push(item);
     S.pos = S.hist.length - 1;
@@ -348,12 +415,12 @@
   // Ce qu'il faut refaire après un rechargement de page (l'overlay se rouvre tout de suite, au même endroit).
   const seenList = () => Array.from(new Set([...S.skip, ...S.played])).slice(-1500);
   // L'historique (40 dernières vidéos) traverse les rechargements : « précédente » marche encore après un nettoyage.
-  const KEEP = ['id', 'handle', 'href', 'name', 'text', 'lang', 'poster', 'ai', 'themes', 'regions', 'words', 'norm'];
+  const KEEP = ['id', 'handle', 'href', 'name', 'text', 'lang', 'poster', 'ai', 'sensitive', 'themes', 'regions', 'words', 'norm'];
   const histOut = () => {
     const from = Math.max(0, S.hist.length - 40);
     return { hist: S.hist.slice(from).map((it) => Object.fromEntries(KEEP.map((k) => [k, it[k]]))), pos: Math.min(S.pos, S.hist.length - 1) - from };
   };
-  const payload = (extra) => ({ open: true, source: S.source, topics: S.topics, variant: S.variant, channel: S.channel, angle: S.angle, cycle: S.cycle, seen: seenList(), tries: S.tries, returnTo: S.returnTo, ...histOut(), ...extra });
+  const payload = (extra) => ({ open: true, source: S.source, mixLog: S.mixLog.slice(-30), mixAngle: S.mixAngle, mixFail: S.mixFail, detour: S.detour, topics: S.topics, variant: S.variant, channel: S.channel, angle: S.angle, cycle: S.cycle, seen: seenList(), tries: S.tries, returnTo: S.returnTo, ...histOut(), ...extra });
 
   // Revoir une vidéo qui n'est plus sur la page : on ouvre la page du tweet (où X la montre), puis on revient au flux.
   function openStatus(item) {
@@ -395,6 +462,7 @@
   function stopRetry() { clearTimeout(retryTimer); retryTimer = null; }
   function noMore() {
     stopRetry();
+    if (S.detour) return endDetour(); // la recherche du détour est épuisée : retour à Pour vous
     const ch = chan();
     if (ch && S.cycle < ch.angles.length - 1) {
       const next = (S.angle + 1) % ch.angles.length;
@@ -503,12 +571,23 @@
   }
 
   async function tryPlay(video) {
-    try { await video.play(); return true; } catch (_) {
-      // Lecture refusée (pas de geste utilisateur) : on démarre muet et on réactivera le son au premier clic.
+    try { await video.play(); return true; } catch (e) {
+      // Lecture interrompue (X a mis la vidéo en pause ou changé sa source pendant le chargement) : ce n'est PAS un
+      // refus du son. On relance simplement, sans couper le son (avant, la vidéo restait muette jusqu'à un clic).
+      if (!e || e.name !== 'NotAllowedError') {
+        await sleep(300);
+        if (S.orig === video) video.play().catch(() => {});
+        return true;
+      }
+      // Firefox refuse le son automatique (page qui vient d'être chargée, pas encore de clic) : on démarre muet et on
+      // remet le son au premier clic ou à la première touche.
       video.muted = true;
       S.soundLocked = true;
       try { await video.play(); } catch (__) {}
-      toast('Appuie sur une touche ou clique pour activer le son.');
+      if (!S.autoplayTip) {
+        S.autoplayTip = true;
+        toast('Firefox a coupé le son : clique ou appuie sur une touche. Pour ne plus le voir : icône à gauche de l\'adresse > Lecture automatique > Autoriser l\'audio et la vidéo.');
+      } else toast('Clique ou appuie sur une touche pour remettre le son.');
       return false;
     }
   }
@@ -516,6 +595,7 @@
   function unlockSound() {
     if (!S.soundLocked) return;
     S.soundLocked = false;
+    S.unlockedAt = Date.now();
     if (S.orig) S.orig.muted = SET().muted;
   }
 
@@ -609,6 +689,7 @@
     borrow(video); // l'image s'affiche dès qu'elle existe, en même temps que le son
     if (video.videoWidth) setAr(video.videoWidth, video.videoHeight);
     S.userPaused = false;
+    listen(video, 'volumechange', () => { if (++S.enforceCount < 30) setTimeout(enforceAudio, 0); }); // X remet parfois son propre « muet »
     // La surveillance démarre AVANT de lancer la lecture : si Firefox ne répond plus, play() ne se termine jamais.
     let started = !video.paused && video.currentTime > 0;
     listen(video, 'playing', () => { started = true; S.stallRun = 0; enforceAudio(); clearBusy(); });
@@ -639,6 +720,8 @@
     S.tries = 0;
     S.cycle = 0;
     S.pagePlays++;
+    if (!S.viewed.has(item.id)) { S.mixLog.push(item.themes || []); if (S.mixLog.length > 30) S.mixLog = S.mixLog.slice(-30); }
+    if (S.detour) S.detour.left--;
     setAr(video.videoWidth, video.videoHeight);
     if (video.readyState >= 3 && !video.paused) clearState();
     refreshAudioUi();
@@ -647,7 +730,6 @@
     showStats(item, true);
 
     let prevT = 0, resumes = 0;
-    listen(video, 'volumechange', () => { if (++S.enforceCount < 30) setTimeout(enforceAudio, 0); });
     listen(video, 'waiting', () => busy('Mise en mémoire…'));
     listen(video, 'play', () => { if (S.page) { try { video.pause(); } catch (_) {} } });
     const advance = () => {
@@ -811,6 +893,7 @@
   function launchSearch(topics, variant = 0) {
     const list = topics.map((t) => t.trim()).filter(Boolean);
     if (!list.length) return;
+    S.detour = null;
     if (!variant) list.forEach((t) => store.addRecent(t));
     closePage(true);
     stopRetry();
@@ -825,6 +908,7 @@
   function launchChannel(id, i = 0, cycle = 0) {
     const ch = C.get(id);
     if (!ch) return;
+    S.detour = null;
     const n = ch.angles.length;
     i = ((i % n) + n) % n;
     const a = ch.angles[i];
@@ -842,6 +926,7 @@
     closePage(true);
     stopRetry();
     S.channel = null;
+    S.detour = null;
     S.source = src;
     resetFeed();
     detach();
@@ -878,6 +963,8 @@
     mute() {
       unlockSound();
       const s = SET();
+      // le son était bloqué par Firefox : ce clic vient de le remettre, il ne doit pas le recouper aussitôt
+      if (Date.now() - (S.unlockedAt || 0) < 100 && !s.muted && s.volume > 0) return;
       if (s.muted || s.volume === 0) store.set({ muted: false, volume: s.volume === 0 ? 0.5 : s.volume });
       else store.set({ muted: true });
     },
@@ -1120,7 +1207,8 @@
     if (S.pageM) { S.pageM.destroy(); S.pageM = null; }
     els.overlay.classList.remove('page');
     S.page = null;
-    if (!silent && S.resumeAfterPage && S.orig && !S.userPaused) S.orig.play().catch(() => {});
+    if (!silent && S.orig && cur() && why(cur())) { S.resumeAfterPage = false; dropCurrent(); goNext(); } // la vidéo en cours est maintenant filtrée
+    else if (!silent && S.resumeAfterPage && S.orig && !S.userPaused) S.orig.play().catch(() => {});
     S.resumeAfterPage = false;
     scheduleRails();
   }
@@ -1190,7 +1278,7 @@
     clearTimeout(S.toastTimer);
     els.toast.innerHTML = `<span>${esc(text)}</span>${undo ? `<button data-a="${undo.a}" data-v="${esc(undo.v)}">${ic('undo', 14)}${esc(undo.label)}</button>` : ''}`;
     els.toast.classList.add('show');
-    S.toastTimer = setTimeout(hideToast, undo ? 6000 : 3200);
+    S.toastTimer = setTimeout(hideToast, undo ? 6000 : Math.max(3200, String(text).length * 55));
   }
   function hideToast() { els.toast.classList.remove('show'); }
 
@@ -1384,7 +1472,7 @@
     els.handle.textContent = item.name + '  @' + item.handle;
     els.text.textContent = item.text;
     els.tags.textContent = item.themes.map((id) => T.LABEL[id]).join(' · ');
-    els.pos.textContent = 'N° ' + (S.pos + 1);
+    els.pos.textContent = 'N° ' + (S.pos + 1) + (S.detour ? ' · Mélange : ' + (T.LABEL[S.detour.theme] || '') : '');
     renderTop();
     scheduleRails();
   }
@@ -1395,7 +1483,7 @@
     if (!w || !h) return;
     S.ar = w / h;
     els.frame.classList.toggle('wide', S.ar > 1.2);
-    els.overlay.classList.toggle('wide', S.ar > 1.2); // vidéo large : on libère la place du rail de droite
+    els.overlay.classList.toggle('wide', S.ar > 1.2); // vidéo large : les colonnes restent visibles, le cadre s'adapte
     fitFrame();
   }
 
@@ -1660,6 +1748,12 @@
   async function openOverlay(auto) {
     if (S.open) return;
     if (auto && auto.channel && C.get(auto.channel)) { S.channel = auto.channel; S.angle = auto.angle || 0; S.cycle = auto.cycle || 0; S.chKey = location.search; }
+    if (auto) {
+      S.detour = auto.detour && location.pathname.startsWith('/search') ? auto.detour : null;
+      if (Array.isArray(auto.mixLog)) S.mixLog = auto.mixLog;
+      if (auto.mixAngle && typeof auto.mixAngle === 'object') S.mixAngle = auto.mixAngle;
+      if (auto.mixFail && typeof auto.mixFail === 'object') S.mixFail = auto.mixFail;
+    }
     detectSource();
     if (auto && auto.topics) { S.topics = auto.topics; S.variant = auto.variant || 0; }
     if (auto && auto.seen) S.skip = new Set(auto.seen);
@@ -1727,7 +1821,14 @@
   }
 
   function onStore(what) {
-    if (what === 'settings') { S.rev++; applyLayout(); refreshAudioUi(); renderTop(); scheduleRails(); }
+    if (what === 'settings') {
+      S.rev++; applyLayout(); refreshAudioUi(); renderTop(); scheduleRails();
+      // un filtre vient d'être activé et la vidéo en cours ne passe plus : on passe tout de suite à la suivante
+      const v0 = S.orig, it0 = cur();
+      if (S.open && !S.page && v0 && it0 && why(it0)) setTimeout(() => {
+        if (S.open && !S.page && S.orig === v0 && cur() === it0 && why(it0)) { toast('Vidéo écartée par ton nouveau filtre.'); dropCurrent(); goNext(); }
+      }, 0);
+    }
     else if (['profile', 'feedback', 'recent'].includes(what)) scheduleRails();
   }
 

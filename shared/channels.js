@@ -121,5 +121,20 @@
   const get = (id) => all().find((c) => c.id === id) || null;
   const angle = (id, i) => { const c = get(id); return c ? c.angles[((i % c.angles.length) + c.angles.length) % c.angles.length] : null; };
 
-  NCT.channels = { LIST, all, get, angle, toChannel };
+  // Recherches utilisées par le mélange de « Pour vous » quand un thème du tableau de bord manque (voir rank.lacking).
+  const THEME_CH = { gaming: ['jeux'], tech: ['devops'], music: ['musique'], art: ['art', 'films'], humor: ['humour'], sport: ['sport'], science: ['science', 'docs'] };
+  const NEWS = '(actu OR actualité OR "breaking news" OR "flash info" OR "dernière minute" OR urgent OR reportage OR breaking OR news)';
+  const POL = '(politique OR "assemblée nationale" OR gouvernement OR élection OR débat OR ministre OR politics OR election OR parliament)';
+  const THEME_Q = {
+    news: [{ label: 'Actu', q: NEWS + V + ' min_faves:300', f: 'top' }, { label: 'Actu récente', q: NEWS + V + ' min_faves:30', f: 'live' }],
+    politics: [{ label: 'Politique', q: POL + V + ' min_faves:300', f: 'top' }, { label: 'Politique récente', q: POL + V + ' min_faves:30', f: 'live' }],
+  };
+  function forTheme(theme) {
+    if (THEME_Q[theme]) return THEME_Q[theme];
+    const out = [];
+    for (const id of THEME_CH[theme] || []) { const c = get(id); if (c) out.push(...c.angles); }
+    return out;
+  }
+
+  NCT.channels = { LIST, all, get, angle, toChannel, forTheme };
 })();
