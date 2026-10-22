@@ -16,6 +16,11 @@
           "version": "0.7.1",
           "update_link": "https://github.com/SyphaxHdr/nocturne/releases/download/v0.7.1/nocturne-0.7.1.xpi",
           "update_hash": "sha256:2c004c5288f43d12542d3c1549ee4f83ccaeab849c6eae0fac5d7378c422e5a2"
+        },
+        {
+          "version": "0.7.2",
+          "update_link": "https://github.com/SyphaxHdr/nocturne/releases/download/v0.7.2/nocturne-0.7.2.xpi",
+          "update_hash": "sha256:a38488f85e80bc1d11a66b3209b7a8b2f190072505df71c61d66811571f757da"
         }
       ]
     }
